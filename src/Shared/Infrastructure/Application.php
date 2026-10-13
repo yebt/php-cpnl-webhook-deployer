@@ -4,6 +4,17 @@ declare(strict_types=1);
 
 namespace Deployer\Shared\Infrastructure;
 
+use Deployer\Auth\Application\Login;
+use Deployer\Auth\Application\Sessions;
+use Deployer\Auth\Application\SetPassword;
+use Deployer\Auth\Application\SetupAdmin;
+use Deployer\Auth\Domain\UserRepository;
+use Deployer\Auth\Infrastructure\Cli\UserPasswordCommand;
+use Deployer\Auth\Infrastructure\Http\AuthController;
+use Deployer\Auth\Infrastructure\Http\AuthGuard;
+use Deployer\Auth\Infrastructure\SqliteLoginAttempts;
+use Deployer\Auth\Infrastructure\SqliteSessionRepository;
+use Deployer\Auth\Infrastructure\SqliteUserRepository;
 use Deployer\Pipeline\Infrastructure\YamlPipelineParser;
 use Deployer\Projects\Domain\ProjectRepository;
 use Deployer\Projects\Infrastructure\FilesystemInstructionsStore;
@@ -28,12 +39,14 @@ use Deployer\Runs\Infrastructure\SqliteLogRepository;
 use Deployer\Runs\Infrastructure\SqliteRunRepository;
 use Deployer\Runs\Infrastructure\SymfonyProcessStepExecutor;
 use Deployer\Shared\Domain\Clock;
+use Deployer\Shared\Domain\ValidationFailed;
 use Deployer\Shared\Infrastructure\Cli\CliApplication;
 use Deployer\Shared\Infrastructure\Cli\Command\AboutCommand;
 use Deployer\Shared\Infrastructure\Cli\Command\MigrateCommand;
 use Deployer\Shared\Infrastructure\Cli\Console;
 use Deployer\Shared\Infrastructure\Config\AppConfig;
 use Deployer\Shared\Infrastructure\Config\ConfigLoader;
+use Deployer\Shared\Infrastructure\Http\ApiError;
 use Deployer\Shared\Infrastructure\Http\Request;
 use Deployer\Shared\Infrastructure\Http\Response;
 use Deployer\Shared\Infrastructure\Http\Router;
@@ -88,6 +101,21 @@ final class Application
         }
 
         return $this->pdo;
+    }
+
+    public function users(): UserRepository
+    {
+        return new SqliteUserRepository($this->pdo());
+    }
+
+    public function sessions(): Sessions
+    {
+        return new Sessions(new SqliteSessionRepository($this->pdo()), $this->clock);
+    }
+
+    public function setPassword(): SetPassword
+    {
+        return new SetPassword($this->users(), $this->sessions(), $this->clock);
     }
 
     public function projects(): ProjectRepository
@@ -169,16 +197,26 @@ final class Application
             ->add(new RunnerCommand($this))
             ->add(new RunnerSweepCommand($this))
             ->add(new TriggerRunCommand($this))
-            ->add(new CancelRunCommand($this));
+            ->add(new CancelRunCommand($this))
+            ->add(new UserPasswordCommand($this));
     }
 
     public function router(): Router
     {
-        return (new Router())
+        $router = (new Router())
             ->add('GET', '/api/health', fn (): Response => Response::json([
                 'status' => 'ok',
                 'version' => self::VERSION,
             ]));
+
+        (new AuthController(
+            $this->users(),
+            new SetupAdmin($this->users(), $this->clock),
+            new Login($this->users(), new SqliteLoginAttempts($this->pdo()), $this->sessions(), $this->clock),
+            $this->sessions(),
+        ))->register($router);
+
+        return $router;
     }
 
     /** @param list<string> $argv */
@@ -190,11 +228,22 @@ final class Application
     public function handle(Request $request): Response
     {
         try {
-            return $this->router()->dispatch($request);
+            if ($request->bodyTooLarge) {
+                throw new ApiError(413, 'payload_too_large', 'Request body is too large.');
+            }
+            $request = (new AuthGuard($this->sessions()))($request);
+            $response = $this->router()->dispatch($request);
+        } catch (ApiError $e) {
+            $response = $e->toResponse();
+        } catch (ValidationFailed $e) {
+            $response = ApiError::validation($e->errors)->toResponse();
         } catch (Throwable $e) {
             error_log('[deployer] ' . $e);
-
-            return Response::json(['error' => 'Internal server error'], 500);
+            $response = (new ApiError(500, 'internal_error', 'Internal server error.'))->toResponse();
         }
+
+        return $response
+            ->withHeader('Cache-Control', 'no-store')
+            ->withHeader('X-Content-Type-Options', 'nosniff');
     }
 }

@@ -8,6 +8,7 @@ use Deployer\Shared\Infrastructure\Application;
 use Deployer\Shared\Infrastructure\Cli\Console;
 use Deployer\Shared\Infrastructure\Config\AppConfig;
 use Deployer\Shared\Infrastructure\Http\Request;
+use Deployer\Shared\Infrastructure\Persistence\Migrations;
 use Deployer\Tests\Support\TempDir;
 use PHPUnit\Framework\TestCase;
 
@@ -45,7 +46,7 @@ final class EntryPointsTest extends TestCase
 
         self::assertSame(0, $code);
         self::assertStringContainsString('Deployer ' . Application::VERSION, $out);
-        self::assertMatchesRegularExpression('/Schema\s+1/', $out);
+        self::assertMatchesRegularExpression('/Schema\s+' . max(array_keys(Migrations::all())) . '\b/', $out);
     }
 
     public function testUnknownCommandFails(): void

@@ -78,6 +78,23 @@ final class Migrations
                 )',
                 'CREATE INDEX run_logs_run_id ON run_logs (run_id, id)',
             ],
+            2 => [
+                // Server-side sessions: the cookie carries a random token, only its sha256 is stored.
+                'CREATE TABLE sessions (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    csrf_token TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL
+                )',
+                'CREATE INDEX sessions_user_id ON sessions (user_id)',
+                'CREATE TABLE login_attempts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ip TEXT NOT NULL,
+                    attempted_at TEXT NOT NULL
+                )',
+                'CREATE INDEX login_attempts_ip ON login_attempts (ip, attempted_at)',
+            ],
         ];
     }
 }

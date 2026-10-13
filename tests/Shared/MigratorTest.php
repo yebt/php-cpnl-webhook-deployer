@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Deployer\Tests\Shared;
 
 use Deployer\Shared\Infrastructure\Persistence\Database;
+use Deployer\Shared\Infrastructure\Persistence\Migrations;
 use Deployer\Shared\Infrastructure\Persistence\Migrator;
 use Deployer\Tests\Support\TempDir;
 use PHPUnit\Framework\TestCase;
@@ -24,12 +25,13 @@ final class MigratorTest extends TestCase
         $pdo = Database::connect($dir . '/deployer.sqlite');
         $migrator = new Migrator($pdo);
 
-        self::assertSame([1], $migrator->migrate());
+        $versions = array_keys(Migrations::all());
+        self::assertSame($versions, $migrator->migrate());
         self::assertSame([], $migrator->migrate());
-        self::assertSame(1, $migrator->currentVersion());
+        self::assertSame(max($versions), $migrator->currentVersion());
 
         $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")->fetchAll(\PDO::FETCH_COLUMN);
-        foreach (['users', 'notifiers', 'projects', 'runs', 'run_steps', 'run_logs', 'schema_migrations'] as $table) {
+        foreach (['users', 'notifiers', 'projects', 'runs', 'run_steps', 'run_logs', 'sessions', 'login_attempts', 'schema_migrations'] as $table) {
             self::assertContains($table, $tables);
         }
         self::assertSame('wal', $pdo->query('PRAGMA journal_mode')->fetchColumn());

@@ -40,9 +40,11 @@ final class Router
         }
 
         if ($allowed !== []) {
-            return new Response(405, '', ['Allow' => implode(', ', array_unique($allowed))]);
+            $allow = implode(', ', array_unique($allowed));
+
+            return (new ApiError(405, 'method_not_allowed', 'Method not allowed.', headers: ['Allow' => $allow]))->toResponse();
         }
 
-        return Response::json(['error' => 'Not found'], 404);
+        return ApiError::notFound()->toResponse();
     }
 }
