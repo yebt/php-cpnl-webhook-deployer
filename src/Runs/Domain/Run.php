@@ -18,6 +18,8 @@ final class Run
         public readonly ?string $finishedAt,
         public readonly ?string $error,
         public readonly ?string $pipelineYaml,
+        /** @var array<string,string>|null informational trigger summary (e.g. webhook ref/commit) */
+        public readonly ?array $triggerMeta = null,
     ) {
     }
 }

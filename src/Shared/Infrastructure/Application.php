@@ -15,7 +15,15 @@ use Deployer\Auth\Infrastructure\Http\AuthGuard;
 use Deployer\Auth\Infrastructure\SqliteLoginAttempts;
 use Deployer\Auth\Infrastructure\SqliteSessionRepository;
 use Deployer\Auth\Infrastructure\SqliteUserRepository;
+use Deployer\Notifiers\Application\SaveNotifier;
+use Deployer\Notifiers\Domain\NotifierRepository;
+use Deployer\Notifiers\Infrastructure\Http\NotifiersController;
+use Deployer\Notifiers\Infrastructure\SqliteNotifierRepository;
 use Deployer\Pipeline\Infrastructure\YamlPipelineParser;
+use Deployer\Projects\Application\ProjectInstructions;
+use Deployer\Projects\Application\SaveProject;
+use Deployer\Projects\Application\WebhookTokens;
+use Deployer\Projects\Infrastructure\Http\ProjectsController;
 use Deployer\Projects\Domain\ProjectRepository;
 use Deployer\Projects\Infrastructure\FilesystemInstructionsStore;
 use Deployer\Projects\Infrastructure\SqliteProjectRepository;
@@ -34,6 +42,8 @@ use Deployer\Runs\Infrastructure\Cli\RunnerSweepCommand;
 use Deployer\Runs\Infrastructure\Cli\TriggerRunCommand;
 use Deployer\Runs\Infrastructure\DetachedRunnerLauncher;
 use Deployer\Runs\Infrastructure\FlockProjectLock;
+use Deployer\Runs\Infrastructure\Http\RunsController;
+use Deployer\Runs\Infrastructure\Http\WebhookController;
 use Deployer\Runs\Infrastructure\PosixProcessProbe;
 use Deployer\Runs\Infrastructure\SqliteLogRepository;
 use Deployer\Runs\Infrastructure\SqliteRunRepository;
@@ -66,8 +76,12 @@ final class Application
 
     private ?PDO $pdo = null;
 
-    public function __construct(private readonly AppConfig $config, private readonly Clock $clock = new SystemClock())
-    {
+    public function __construct(
+        private readonly AppConfig $config,
+        private readonly Clock $clock = new SystemClock(),
+        /** Overrides the detached launcher (tests). */
+        private readonly ?RunnerLauncher $launcher = null,
+    ) {
     }
 
     public static function fromEnvironment(): self
@@ -133,9 +147,14 @@ final class Application
         return new SqliteLogRepository($this->pdo());
     }
 
+    public function notifiers(): NotifierRepository
+    {
+        return new SqliteNotifierRepository($this->pdo());
+    }
+
     public function runnerLauncher(): RunnerLauncher
     {
-        return new DetachedRunnerLauncher($this->config->phpCli, $this->config->entryScript, $this->config->dataDir);
+        return $this->launcher ?? new DetachedRunnerLauncher($this->config->phpCli, $this->config->entryScript, $this->config->dataDir);
     }
 
     public function enqueueRun(?RunnerLauncher $launcher = null): EnqueueRun
@@ -215,6 +234,16 @@ final class Application
             new Login($this->users(), new SqliteLoginAttempts($this->pdo()), $this->sessions(), $this->clock),
             $this->sessions(),
         ))->register($router);
+        (new NotifiersController($this->notifiers(), new SaveNotifier($this->notifiers())))->register($router);
+        (new ProjectsController(
+            $this->projects(),
+            new SaveProject($this->projects(), $this->notifiers()),
+            new ProjectInstructions(new FilesystemInstructionsStore(), new YamlPipelineParser()),
+            new WebhookTokens($this->projects()),
+            $this->runs(),
+        ))->register($router);
+        (new RunsController($this->projects(), $this->runs(), $this->enqueueRun(), $this->cancelRun(), $this->readRunLogs()))->register($router);
+        (new WebhookController(new WebhookTokens($this->projects()), $this->enqueueRun()))->register($router);
 
         return $router;
     }
@@ -228,7 +257,8 @@ final class Application
     public function handle(Request $request): Response
     {
         try {
-            if ($request->bodyTooLarge) {
+            // Webhooks still trigger with an oversized body (e.g. a huge push payload); it is just ignored.
+            if ($request->bodyTooLarge && !str_starts_with($request->path, '/hooks/')) {
                 throw new ApiError(413, 'payload_too_large', 'Request body is too large.');
             }
             $request = (new AuthGuard($this->sessions()))($request);

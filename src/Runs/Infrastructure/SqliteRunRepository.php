@@ -6,6 +6,7 @@ namespace Deployer\Runs\Infrastructure;
 
 use DateTimeImmutable;
 use Deployer\Runs\Domain\Run;
+use Deployer\Runs\Domain\RunFilter;
 use Deployer\Runs\Domain\RunRepository;
 use Deployer\Runs\Domain\RunStatus;
 use Deployer\Runs\Domain\RunStepRecord;
@@ -21,13 +22,48 @@ final class SqliteRunRepository implements RunRepository
     {
     }
 
-    public function enqueue(int $projectId, string $trigger, DateTimeImmutable $now): int
+    public function enqueue(int $projectId, string $trigger, DateTimeImmutable $now, ?array $triggerMeta = null): int
     {
-        $this->exec('INSERT INTO runs (project_id, status, trigger, created_at) VALUES (?, ?, ?, ?)', [
-            $projectId, RunStatus::Queued->value, $trigger, $this->time($now),
+        $meta = $triggerMeta === null ? null : json_encode($triggerMeta, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        $this->exec('INSERT INTO runs (project_id, status, trigger, trigger_meta, created_at) VALUES (?, ?, ?, ?, ?)', [
+            $projectId, RunStatus::Queued->value, $trigger, $meta, $this->time($now),
         ]);
 
         return (int) $this->pdo->lastInsertId();
+    }
+
+    public function search(RunFilter $filter): array
+    {
+        $where = [];
+        $params = [];
+        if ($filter->projectId !== null) {
+            $where[] = 'project_id = ?';
+            $params[] = $filter->projectId;
+        }
+        if ($filter->status !== null) {
+            $where[] = 'status = ?';
+            $params[] = $filter->status->value;
+        }
+        if ($filter->beforeId !== null) {
+            $where[] = 'id < ?';
+            $params[] = $filter->beforeId;
+        }
+        $sql = 'SELECT * FROM runs' . ($where === [] ? '' : ' WHERE ' . implode(' AND ', $where)) . ' ORDER BY id DESC LIMIT ?';
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $i => $value) {
+            $stmt->bindValue($i + 1, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->bindValue(count($params) + 1, $filter->limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_map($this->hydrate(...), $stmt->fetchAll());
+    }
+
+    public function hasActive(int $projectId): bool
+    {
+        return $this->exec('SELECT 1 FROM runs WHERE project_id = ? AND status IN (?, ?) LIMIT 1', [
+            $projectId, RunStatus::Queued->value, RunStatus::Running->value,
+        ])->fetchColumn() !== false;
     }
 
     public function find(int $runId): ?Run
@@ -185,6 +221,7 @@ final class SqliteRunRepository implements RunRepository
             $row['finished_at'],
             $row['error'],
             $row['pipeline_yaml'],
+            isset($row['trigger_meta']) ? (json_decode((string) $row['trigger_meta'], true) ?: null) : null,
         );
     }
 

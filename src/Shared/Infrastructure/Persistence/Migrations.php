@@ -95,6 +95,11 @@ final class Migrations
                 )',
                 'CREATE INDEX login_attempts_ip ON login_attempts (ip, attempted_at)',
             ],
+            3 => [
+                // JSON summary of the trigger (e.g. webhook ref/commit); informational only.
+                'ALTER TABLE runs ADD COLUMN trigger_meta TEXT NULL',
+                'CREATE INDEX runs_status ON runs (status, id)',
+            ],
         ];
     }
 }

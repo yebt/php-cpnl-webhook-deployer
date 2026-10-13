@@ -19,6 +19,7 @@ abstract class ApiTestCase extends TestCase
 
     protected Application $app;
     protected FixedClock $clock;
+    protected RecordingLauncher $launcher;
     /** @var array<string,string> */
     protected array $cookies = [];
     protected ?string $csrf = null;
@@ -26,9 +27,11 @@ abstract class ApiTestCase extends TestCase
     protected function setUp(): void
     {
         $this->clock = new FixedClock();
+        $this->launcher = new RecordingLauncher();
         $this->app = new Application(
             new AppConfig($this->makeTempDir(), PHP_BINARY, dirname(__DIR__, 2) . '/bin/deployer', false),
             $this->clock,
+            $this->launcher,
         );
     }
 
@@ -85,6 +88,29 @@ abstract class ApiTestCase extends TestCase
     protected function json(Response $response): array
     {
         return json_decode($response->body, true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Creates a project through the API with a temp folder holding $yaml as deployer.yml.
+     *
+     * @param array<string,mixed> $extra
+     * @return array<string,mixed> the project resource
+     */
+    protected function createProjectViaApi(string $slug, ?string $yaml = "steps:\n  - name: Hello\n    run: echo hello\n", array $extra = []): array
+    {
+        $folder = $this->makeTempDir();
+        if ($yaml !== null) {
+            file_put_contents($folder . '/deployer.yml', $yaml);
+        }
+        $response = $this->call('POST', '/api/projects', [
+            'name' => ucfirst($slug),
+            'slug' => $slug,
+            'folder' => $folder,
+            ...$extra,
+        ]);
+        self::assertSame(201, $response->status, $response->body);
+
+        return $this->json($response)['project'];
     }
 
     protected function setUpAdmin(string $username = 'admin', string $password = 'correct horse battery'): void
