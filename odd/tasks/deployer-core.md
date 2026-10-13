@@ -67,7 +67,18 @@ ask-on-risk. Forecast: ~3500 authored changed lines (exceeds 400). Chain strateg
     - Var values may be string, number or boolean (booleans become `true`/`false`).
     - `$${NAME}` escapes to a literal `${NAME}` so shell brace syntax stays usable; `$NAME` without braces is passed through untouched.
     - All errors are collected and reported together, each prefixed with its location (`vars.A`, `steps[1] (Install)`).
-- [ ] T3 — Run engine: queue model, detached runner spawn, per-project flock, step execution with symfony/process (process group), log persistence, timeouts, cooperative cancel, final status. Tests with real processes. Route: delegated.
+- [x] T3 — Run engine: queue model, detached runner spawn, per-project flock, step execution with symfony/process (process group), log persistence, timeouts, cooperative cancel, final status. Tests with real processes. Route: delegated.
+  - Decisions:
+    - Steps run as `setsid bash -c '<close fds>; exec bash -c "$1"' deployer-step <command>`: the step bash is the leader of a new session/process group, so cancel/timeout signal `-pgid` (SIGTERM, `kill_grace_seconds` grace, SIGKILL) and kill grandchildren. Signals are sent and polled (not the blocking `Process::stop()`), and the runner records `cancelled`/`failed` itself; exit codes are never used to infer cancellation.
+    - Inherited descriptors above 2 are closed in both the step wrapper and the runner launcher. Found by test: PHP's `fopen()` handles lack close-on-exec, so a step would inherit the project flock (a background daemon started by a step would block the project forever) and, under FPM, the launcher could inherit the client connection.
+    - Child processes get a default `PATH` and `HOME` when missing (PHP-FPM `clear_env`), since git/composer need them.
+    - Steps run with the project folder as working directory; a missing folder fails the run before any step.
+    - A failed step with `continue_on_error: true` is recorded as `failed` but the run can still end `success`.
+    - On normal step completion, background processes the step left running are not killed (allows intentional `nohup` workers); only cancel/timeout kill the whole group.
+    - Cancelling a queued run marks it `cancelled` immediately; cancelling a running run sets `cancel_requested` (polled every 0.5 s and between steps).
+    - Runner drain loop re-checks the queue after releasing the lock, so a run enqueued while the previous runner was finishing is never orphaned. `runner:sweep` only fails a `running` run when its PID is dead AND its project lock can be taken (never fails a run that might still execute); it launches runners for projects with queued runs and a free lock.
+    - Extra CLI commands `run:trigger <project>` and `run:cancel <run>` (operational/manual use; HTTP equivalents come in T5).
+    - Without a `setsid` binary the executor degrades to signalling only the step leader (cPanel/Linux ships util-linux, so this is a fallback only).
 - [ ] T4 — Auth: bootstrap first-run, login/logout, sessions, CSRF. Route: delegated.
 - [ ] T5 — HTTP API: notifiers, projects, instructions file read/write, webhook with token, manual trigger, runs list/detail, incremental logs, cancel. Route: delegated.
 - [ ] T6 — Telegram notifier on run finish. Route: delegated.
@@ -87,7 +98,8 @@ PHPUnit (unit + integration with real processes and SQLite), PHP lint, frontend 
 
 ## Progress / Evidence
 - T1 (delegated writer; trigger: 2+ non-trivial files). Tests were written alongside the skeleton (no meaningful RED for scaffolding). Checks: `vendor/bin/phpunit` → OK (10 tests, 35 assertions); `php -l` over src/tests/bin/public/build → 0 errors; `php -d phar.readonly=0 build/build-phar.php && php dist/deployer.phar about` → built 332 KiB phar, `about` prints version, data dir, schema 1; manual web check: phar copied as `index.php` under `php -S` → `GET /api/health` 200 JSON, unknown path 404. Commit: `fad54b6`.
-- T2 (delegated writer). RED observed: `vendor/bin/phpunit tests/Pipeline` → 29 errors (classes missing) before implementation; GREEN: 29/29 pass. A follow-up case (reference to an earlier invalid var reported as "declared after") was found in self-review, fixed and covered by a test. Checks: `vendor/bin/phpunit` → OK (40 tests, 75 assertions); `php -l` → 0 errors. Commit: see `feat(pipeline)` in git log.
+- T2 (delegated writer). RED observed: `vendor/bin/phpunit tests/Pipeline` → 29 errors (classes missing) before implementation; GREEN: 29/29 pass. A follow-up case (reference to an earlier invalid var reported as "declared after") was found in self-review, fixed and covered by a test. Checks: `vendor/bin/phpunit` → OK (40 tests, 75 assertions); `php -l` → 0 errors. Commit: `93db89d`.
+- T3 (delegated writer). TDD exception, reported honestly: implementation was written before its tests, so no RED-first evidence exists for T3. Regression detection was verified by mutation instead: removing the fd-closing wrapper makes `testStepsDoNotInheritTheProjectLockDescriptor` fail (FAILURES 1/1), restoring it passes. Checks: `vendor/bin/phpunit` → OK (66 tests, 196 assertions), run 3 times with no flakes (~12 s); integration tests with real detached runners prove same-project sequential, different-project parallel (overlap, < 3.8 s for two 2 s runs), cancel kills the `sleep` grandchild and records `cancelled`, timeout kills the tree, SIGTERM-ignoring tree killed after grace, sweep relaunches an orphaned queue, logs persisted with stream tags and the exact interpolated command. `php -l` → 0 errors. Phar smoke: `run:trigger demo` through `dist/deployer.phar` executed via a detached phar runner → `success` with logs. Commit: see `feat(runs)` in git log.
 
 ## Next step
-T3.
+T4.

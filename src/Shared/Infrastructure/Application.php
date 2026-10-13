@@ -4,6 +4,29 @@ declare(strict_types=1);
 
 namespace Deployer\Shared\Infrastructure;
 
+use Deployer\Pipeline\Infrastructure\YamlPipelineParser;
+use Deployer\Projects\Domain\ProjectRepository;
+use Deployer\Projects\Infrastructure\FilesystemInstructionsStore;
+use Deployer\Projects\Infrastructure\SqliteProjectRepository;
+use Deployer\Runs\Application\CancelRun;
+use Deployer\Runs\Application\DrainProjectQueue;
+use Deployer\Runs\Application\EnqueueRun;
+use Deployer\Runs\Application\ExecuteRun;
+use Deployer\Runs\Application\Port\RunnerLauncher;
+use Deployer\Runs\Application\ReadRunLogs;
+use Deployer\Runs\Application\SweepRunners;
+use Deployer\Runs\Domain\LogRepository;
+use Deployer\Runs\Domain\RunRepository;
+use Deployer\Runs\Infrastructure\Cli\CancelRunCommand;
+use Deployer\Runs\Infrastructure\Cli\RunnerCommand;
+use Deployer\Runs\Infrastructure\Cli\RunnerSweepCommand;
+use Deployer\Runs\Infrastructure\Cli\TriggerRunCommand;
+use Deployer\Runs\Infrastructure\DetachedRunnerLauncher;
+use Deployer\Runs\Infrastructure\FlockProjectLock;
+use Deployer\Runs\Infrastructure\PosixProcessProbe;
+use Deployer\Runs\Infrastructure\SqliteLogRepository;
+use Deployer\Runs\Infrastructure\SqliteRunRepository;
+use Deployer\Runs\Infrastructure\SymfonyProcessStepExecutor;
 use Deployer\Shared\Domain\Clock;
 use Deployer\Shared\Infrastructure\Cli\CliApplication;
 use Deployer\Shared\Infrastructure\Cli\Command\AboutCommand;
@@ -67,11 +90,86 @@ final class Application
         return $this->pdo;
     }
 
+    public function projects(): ProjectRepository
+    {
+        return new SqliteProjectRepository($this->pdo());
+    }
+
+    public function runs(): RunRepository
+    {
+        return new SqliteRunRepository($this->pdo());
+    }
+
+    public function logs(): LogRepository
+    {
+        return new SqliteLogRepository($this->pdo());
+    }
+
+    public function runnerLauncher(): RunnerLauncher
+    {
+        return new DetachedRunnerLauncher($this->config->phpCli, $this->config->entryScript, $this->config->dataDir);
+    }
+
+    public function enqueueRun(?RunnerLauncher $launcher = null): EnqueueRun
+    {
+        return new EnqueueRun($this->projects(), $this->runs(), $launcher ?? $this->runnerLauncher(), $this->clock);
+    }
+
+    public function cancelRun(): CancelRun
+    {
+        return new CancelRun($this->runs(), $this->logs(), $this->clock);
+    }
+
+    public function readRunLogs(): ReadRunLogs
+    {
+        return new ReadRunLogs($this->runs(), $this->logs());
+    }
+
+    public function executeRun(): ExecuteRun
+    {
+        return new ExecuteRun(
+            $this->projects(),
+            new FilesystemInstructionsStore(),
+            new YamlPipelineParser(),
+            $this->runs(),
+            $this->logs(),
+            new SymfonyProcessStepExecutor($this->config->killGraceSeconds),
+            $this->clock,
+        );
+    }
+
+    public function drainProjectQueue(): DrainProjectQueue
+    {
+        return new DrainProjectQueue(
+            new FlockProjectLock($this->config->locksDir()),
+            $this->runs(),
+            $this->executeRun(),
+            $this->clock,
+            (int) getmypid(),
+        );
+    }
+
+    public function sweepRunners(?RunnerLauncher $launcher = null): SweepRunners
+    {
+        return new SweepRunners(
+            $this->runs(),
+            $this->logs(),
+            new FlockProjectLock($this->config->locksDir()),
+            $launcher ?? $this->runnerLauncher(),
+            new PosixProcessProbe(),
+            $this->clock,
+        );
+    }
+
     public function cli(): CliApplication
     {
         return (new CliApplication())
             ->add(new AboutCommand($this))
-            ->add(new MigrateCommand($this));
+            ->add(new MigrateCommand($this))
+            ->add(new RunnerCommand($this))
+            ->add(new RunnerSweepCommand($this))
+            ->add(new TriggerRunCommand($this))
+            ->add(new CancelRunCommand($this));
     }
 
     public function router(): Router
