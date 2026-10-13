@@ -1,0 +1,16 @@
+# Optional: clean URLs for Deployer (https://deploy.example.com/projects/3).
+# Without this file the app still works through https://deploy.example.com/index.php/
+DirectoryIndex index.php
+
+# The config file holds paths only, but never needs to be reachable over HTTP.
+<Files "deployer.config.php">
+    Require all denied
+</Files>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Real files (e.g. AutoSSL's /.well-known challenges) are served as is;
+    # everything else goes to the app. DEPLOYER_REWRITE tells it clean URLs work.
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L,E=DEPLOYER_REWRITE:1]
+</IfModule>

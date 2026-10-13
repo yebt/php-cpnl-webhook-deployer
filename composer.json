@@ -31,5 +31,12 @@
         "sort-packages": true,
         "optimize-autoloader": true
     },
-    "minimum-stability": "stable"
+    "minimum-stability": "stable",
+    "scripts": {
+        "test": "phpunit",
+        "build": [
+            "Composer\\Config::disableProcessTimeout",
+            "bash build/build.sh"
+        ]
+    }
 }
