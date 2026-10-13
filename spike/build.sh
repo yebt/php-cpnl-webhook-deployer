@@ -39,6 +39,13 @@ case "${1:-}" in
         # Run from an empty directory to prove vendor/ is not read from disk.
         run "set -e; mkdir -p /tmp/rt && cp app/deployer app/pipeline.yml /tmp/rt/ && cd /tmp/rt && ./deployer yaml pipeline.yml"
         ;;
+    process)
+        "$0" compile
+        run "set -e; mkdir -p /tmp/rt && cp app/deployer /tmp/rt/ && cd /tmp/rt \
+             && echo '== A: run to completion ==' && ./deployer process 0 0 \
+             && echo '== B: cancel at 2s, child honours SIGTERM ==' && ./deployer process 2 0 \
+             && echo '== C: cancel at 2s, child ignores SIGTERM -> SIGKILL ==' && ./deployer process 2 1"
+        ;;
     shell)
         PODMAN_TTY=-it run bash
         ;;
