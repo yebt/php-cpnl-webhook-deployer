@@ -46,6 +46,10 @@ case "${1:-}" in
              && echo '== B: cancel at 2s, child honours SIGTERM ==' && ./deployer process 2 0 \
              && echo '== C: cancel at 2s, child ignores SIGTERM -> SIGKILL ==' && ./deployer process 2 1"
         ;;
+    http)
+        "$0" compile
+        run "set -e; mkdir -p /tmp/rt && cp app/deployer http-check.sh /tmp/rt/ && cd /tmp/rt && ./http-check.sh ./deployer"
+        ;;
     shell)
         PODMAN_TTY=-it run bash
         ;;

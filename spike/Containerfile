@@ -36,6 +36,13 @@ RUN cmake -S "$PHPX_HOME" -B "$PHPX_HOME/build" \
  && cmake --build "$PHPX_HOME/build" --target phpx --parallel "$JOBS" \
  && test -f "$PHPX_HOME/lib/libphpx.so"
 
+# Swoole (shared extension) for the HTTP check (T4).
+RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev libcurl4-openssl-dev libbrotli-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && MAKEFLAGS="-j$JOBS" pecl install -D 'enable-sockets="no" enable-openssl="yes" enable-mysqlnd="no" enable-swoole-curl="no" enable-cares="no" enable-brotli="no" enable-swoole-pgsql="no" enable-swoole-sqlite="no" enable-swoole-thread="no" enable-iouring="no" enable-zstd="no" with-swoole-odbc="no" with-swoole-oracle="no" enable-swoole-stdext="no"' swoole \
+ && docker-php-ext-enable swoole \
+ && php --ri swoole | head -5
+
 ENV LD_LIBRARY_PATH=/opt/typephp/vendor/swoole/phpx/lib:/usr/local/lib \
     PATH=/opt/typephp/bin:$PATH
 
