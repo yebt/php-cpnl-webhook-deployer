@@ -59,7 +59,14 @@ ask-on-risk. Forecast: ~3500 authored changed lines (exceeds 400). Chain strateg
     - Migrations are PHP arrays (`Migrations::all()`), applied automatically on first DB connection inside `BEGIN IMMEDIATE`; `migrate` command also exists.
     - Phar stub has no shebang (it is served by FPM as index.php); CLI usage is `php deployer.phar <command>`. Phar is not gz-compressed to avoid a runtime dependency on ext-zlib (~330 KiB). Production deps are installed with `--no-dev` in `build/.staging` so dev packages never reach the artifact.
     - `.gitignore`: the previous blanket `build/` rule was narrowed to spike build dirs so `build/build-phar.php` is tracked.
-- [ ] T2 — Pipeline: YAML parsing, vars interpolation (incl. chained vars, built-ins), validation errors. TDD. Route: delegated.
+- [x] T2 — Pipeline: YAML parsing, vars interpolation (incl. chained vars, built-ins), validation errors. TDD. Route: delegated.
+  - Decisions:
+    - Domain `PipelineFactory` validates decoded data (no I/O); `YamlPipelineParser` (Infrastructure) only decodes YAML via symfony/yaml and implements the `PipelineParser` port.
+    - Default step timeout: 3600 s (`Pipeline::DEFAULT_TIMEOUT`) so a hung step cannot block a project queue forever. `timeout` must be a YAML integer > 0 (quoted strings and floats are rejected).
+    - Unknown top-level and step keys are errors (catches typos such as `timout`). Built-in names cannot be redefined in `vars`.
+    - Var values may be string, number or boolean (booleans become `true`/`false`).
+    - `$${NAME}` escapes to a literal `${NAME}` so shell brace syntax stays usable; `$NAME` without braces is passed through untouched.
+    - All errors are collected and reported together, each prefixed with its location (`vars.A`, `steps[1] (Install)`).
 - [ ] T3 — Run engine: queue model, detached runner spawn, per-project flock, step execution with symfony/process (process group), log persistence, timeouts, cooperative cancel, final status. Tests with real processes. Route: delegated.
 - [ ] T4 — Auth: bootstrap first-run, login/logout, sessions, CSRF. Route: delegated.
 - [ ] T5 — HTTP API: notifiers, projects, instructions file read/write, webhook with token, manual trigger, runs list/detail, incremental logs, cancel. Route: delegated.
@@ -79,7 +86,8 @@ ask-on-risk. Forecast: ~3500 authored changed lines (exceeds 400). Chain strateg
 PHPUnit (unit + integration with real processes and SQLite), PHP lint, frontend build, phar smoke test.
 
 ## Progress / Evidence
-- T1 (delegated writer; trigger: 2+ non-trivial files). Tests were written alongside the skeleton (no meaningful RED for scaffolding). Checks: `vendor/bin/phpunit` → OK (10 tests, 35 assertions); `php -l` over src/tests/bin/public/build → 0 errors; `php -d phar.readonly=0 build/build-phar.php && php dist/deployer.phar about` → built 332 KiB phar, `about` prints version, data dir, schema 1; manual web check: phar copied as `index.php` under `php -S` → `GET /api/health` 200 JSON, unknown path 404. Commit: see git log `feat(core): ...skeleton`.
+- T1 (delegated writer; trigger: 2+ non-trivial files). Tests were written alongside the skeleton (no meaningful RED for scaffolding). Checks: `vendor/bin/phpunit` → OK (10 tests, 35 assertions); `php -l` over src/tests/bin/public/build → 0 errors; `php -d phar.readonly=0 build/build-phar.php && php dist/deployer.phar about` → built 332 KiB phar, `about` prints version, data dir, schema 1; manual web check: phar copied as `index.php` under `php -S` → `GET /api/health` 200 JSON, unknown path 404. Commit: `fad54b6`.
+- T2 (delegated writer). RED observed: `vendor/bin/phpunit tests/Pipeline` → 29 errors (classes missing) before implementation; GREEN: 29/29 pass. A follow-up case (reference to an earlier invalid var reported as "declared after") was found in self-review, fixed and covered by a test. Checks: `vendor/bin/phpunit` → OK (40 tests, 75 assertions); `php -l` → 0 errors. Commit: see `feat(pipeline)` in git log.
 
 ## Next step
-T2.
+T3.
