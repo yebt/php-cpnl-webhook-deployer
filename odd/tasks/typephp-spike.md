@@ -1,0 +1,43 @@
+# Feature: typephp-spike
+
+## Objective
+Validate that TypePHP (swoole/typephp) can produce a single binary that covers the critical runtime needs of the deployer before designing the full system.
+
+## Problem / Why
+The deployer must run on the target host as a compiled binary. Its core depends on process execution (`symfony/process`: proc_open, live stdout/stderr, signals for cancellation), YAML parsing (`symfony/yaml`) and an HTTP server with live streaming. TypePHP docs do not confirm proc_open/signals or embedded Swoole support in compiled binaries, and it compiles only a PHP subset. A failed assumption here would invalidate the whole architecture.
+
+## Scope
+- Containerized (Podman) build environment: ZTS PHP 8.4/8.5 with headers, php-config, embed libphp, CMake, GCC, GMP, MPFR, Composer, TypePHP.
+- Minimal spike app compiled with TypePHP, vendor embedded.
+- Checks: YAML parsing, process streaming + cancellation, HTTP server with live output streaming and a cancel endpoint, two concurrent runs.
+- Findings report with go / no-go and fallback recommendation (static-php-cli / swoole-cli + phar).
+
+## Out of scope
+Real deployer features (auth, projects, Telegram, queues, UI).
+
+## Constraints
+- Do not modify the host PHP (php.new NTS musl build); everything builds inside a container.
+- Components only (symfony/process, symfony/yaml, symfony/var-dumper), no Symfony framework.
+- `--nano` mode is excluded (forbids process execution).
+
+## Delivery strategy
+ask-on-risk. Forecast: ~300 authored changed lines (spike code + Containerfile + report).
+
+## Tasks
+- [x] T1 — Build environment: Containerfile + script; `tpc` compiles and runs a hello-world binary. Route: delegated (research + multi-file).
+- [ ] T2 — YAML: compiled binary parses a YAML with a `vars` block and interpolates into steps. Route: delegated.
+- [ ] T3 — Process: compiled binary runs a command via symfony/process, streams stdout/stderr live with timestamps, cancels mid-run (SIGTERM then SIGKILL), reports exit code. Route: delegated.
+- [ ] T4 — HTTP: compiled binary serves HTTP (Swoole ext or alternative), streams a run's output live (SSE/chunked), cancel endpoint works, two runs execute concurrently. Route: delegated.
+- [ ] T5 — Findings report `docs/spike-typephp.md`: what worked, what failed (exact errors), binary size/runtime deps, go/no-go. Route: delegated.
+
+## Acceptance criteria
+Each check is reproducible with one documented command; outputs observed, not assumed. Failures recorded with exact error text.
+
+## Checks
+Test-first exception: this is an exploratory spike with no existing test runner; each task's check is a reproducible run of the compiled binary with observed output.
+
+## Progress / Evidence
+- T1 PASS. Image `localhost/typephp-spike` = `php:8.4-zts` (Debian 13, PHP 8.4.26 ZTS, `--enable-embed`, `/usr/local/lib/libphp.so`, OPcache) + build-essential/cmake/GMP/MPFR + Composer 2 + TypePHP @ 89fe80a + PHPX v2.9.4 (`libphpx.so` built with CMake). `spike/build.sh hello` output: `Hello from TypePHP!` / `PHP_VERSION=8.4.26 ZTS=1`. Binary 52,504 bytes, dynamically linked to `libphpx.so` + `libphp.so` (+ ~40 system libs). Commit: see below.
+
+## Next step
+T1.

@@ -1,0 +1,42 @@
+# Build environment for the TypePHP spike.
+# Base: official Debian PHP 8.4 ZTS image, which is configured with
+# --enable-embed --enable-zts and ships /usr/local/lib/libphp.so, php-config,
+# headers and OPcache (required by `embedded-files`).
+FROM docker.io/library/php:8.4-zts
+
+ARG TYPEPHP_REF=89fe80aae27938c08b59dfa1c3cbbb90a96c1507
+ARG JOBS=4
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      build-essential cmake pkg-config git unzip file procps curl \
+      libgmp-dev libmpfr-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# pcntl/posix give symfony/process signal constants (SIGTERM/SIGKILL).
+RUN docker-php-ext-install pcntl
+
+COPY --from=docker.io/library/composer:2 /usr/bin/composer /usr/local/bin/composer
+
+ENV COMPOSER_ALLOW_SUPERUSER=1 \
+    COMPOSER_NO_INTERACTION=1 \
+    TYPEPHP_HOME=/opt/typephp \
+    PHP_HOME=/usr/local
+
+RUN git clone https://github.com/swoole/typephp.git "$TYPEPHP_HOME" \
+ && git -C "$TYPEPHP_HOME" checkout "$TYPEPHP_REF" \
+ && cd "$TYPEPHP_HOME" && composer install --no-dev --prefer-dist --no-progress
+
+# Build PHPX (libphpx.so) from the Composer-installed swoole/phpx package,
+# mirroring TypePHP's own Linux CI.
+ENV PHPX_HOME=/opt/typephp/vendor/swoole/phpx
+RUN cmake -S "$PHPX_HOME" -B "$PHPX_HOME/build" \
+      -D CMAKE_BUILD_TYPE=Release -D BUILD_TESTS=OFF -D BUILD_EXT=OFF \
+      -D GITHUB_ACTION=ON -D php_dir="$PHP_HOME" \
+ && cmake --build "$PHPX_HOME/build" --target phpx --parallel "$JOBS" \
+ && test -f "$PHPX_HOME/lib/libphpx.so"
+
+ENV LD_LIBRARY_PATH=/opt/typephp/vendor/swoole/phpx/lib:/usr/local/lib \
+    PATH=/opt/typephp/bin:$PATH
+
+WORKDIR /work

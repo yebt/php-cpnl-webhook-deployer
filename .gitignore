@@ -1,0 +1,10 @@
+# TypePHP spike build outputs
+spike/.build/
+spike/**/vendor/
+spike/**/composer.lock
+spike/hello/hello
+spike/app/deployer
+spike/app/build/
+build/
+*.o
+*.gch
