@@ -12,4 +12,7 @@ interface LogRepository
 
     /** @return list<LogLine> lines with id > $afterId, oldest first */
     public function since(int $runId, int $afterId, int $limit): array;
+
+    /** @return list<LogLine> the last $limit stdout/stderr lines of a step, oldest first */
+    public function stepOutputTail(int $runId, int $stepPosition, int $limit): array;
 }

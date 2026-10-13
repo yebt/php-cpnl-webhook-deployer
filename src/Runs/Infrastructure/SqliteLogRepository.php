@@ -41,6 +41,27 @@ final class SqliteLogRepository implements LogRepository
         $stmt->bindValue(3, $limit, PDO::PARAM_INT);
         $stmt->execute();
 
+        return $this->hydrate($stmt->fetchAll());
+    }
+
+    public function stepOutputTail(int $runId, int $stepPosition, int $limit): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM run_logs WHERE run_id = ? AND step_position = ? AND stream != ? ORDER BY id DESC LIMIT ?');
+        $stmt->bindValue(1, $runId, PDO::PARAM_INT);
+        $stmt->bindValue(2, $stepPosition, PDO::PARAM_INT);
+        $stmt->bindValue(3, LogStream::System->value);
+        $stmt->bindValue(4, $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_reverse($this->hydrate($stmt->fetchAll()));
+    }
+
+    /**
+     * @param list<array<string,mixed>> $rows
+     * @return list<LogLine>
+     */
+    private function hydrate(array $rows): array
+    {
         return array_map(static fn (array $r): LogLine => new LogLine(
             (int) $r['id'],
             (int) $r['run_id'],
@@ -48,6 +69,6 @@ final class SqliteLogRepository implements LogRepository
             LogStream::from($r['stream']),
             $r['line'],
             $r['logged_at'],
-        ), $stmt->fetchAll());
+        ), $rows);
     }
 }

@@ -6,6 +6,7 @@
     "require": {
         "php": ">=8.2",
         "ext-pdo_sqlite": "*",
+        "symfony/polyfill-mbstring": "^1.31",
         "symfony/process": "^7.3",
         "symfony/yaml": "^7.3"
     },

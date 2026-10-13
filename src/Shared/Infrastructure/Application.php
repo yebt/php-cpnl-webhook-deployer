@@ -15,10 +15,13 @@ use Deployer\Auth\Infrastructure\Http\AuthGuard;
 use Deployer\Auth\Infrastructure\SqliteLoginAttempts;
 use Deployer\Auth\Infrastructure\SqliteSessionRepository;
 use Deployer\Auth\Infrastructure\SqliteUserRepository;
+use Deployer\Notifiers\Application\NotifyRunFinished;
+use Deployer\Notifiers\Application\Port\Notifier;
 use Deployer\Notifiers\Application\SaveNotifier;
 use Deployer\Notifiers\Domain\NotifierRepository;
 use Deployer\Notifiers\Infrastructure\Http\NotifiersController;
 use Deployer\Notifiers\Infrastructure\SqliteNotifierRepository;
+use Deployer\Notifiers\Infrastructure\TelegramNotifier;
 use Deployer\Pipeline\Infrastructure\YamlPipelineParser;
 use Deployer\Projects\Application\ProjectInstructions;
 use Deployer\Projects\Application\SaveProject;
@@ -48,6 +51,7 @@ use Deployer\Runs\Infrastructure\PosixProcessProbe;
 use Deployer\Runs\Infrastructure\SqliteLogRepository;
 use Deployer\Runs\Infrastructure\SqliteRunRepository;
 use Deployer\Runs\Infrastructure\SymfonyProcessStepExecutor;
+use Deployer\Shared\Application\Port\HttpClient;
 use Deployer\Shared\Domain\Clock;
 use Deployer\Shared\Domain\ValidationFailed;
 use Deployer\Shared\Infrastructure\Cli\CliApplication;
@@ -81,6 +85,8 @@ final class Application
         private readonly Clock $clock = new SystemClock(),
         /** Overrides the detached launcher (tests). */
         private readonly ?RunnerLauncher $launcher = null,
+        /** Overrides the curl client (tests). */
+        private readonly ?HttpClient $httpClient = null,
     ) {
     }
 
@@ -152,6 +158,11 @@ final class Application
         return new SqliteNotifierRepository($this->pdo());
     }
 
+    public function notifier(): Notifier
+    {
+        return new TelegramNotifier($this->httpClient ?? new CurlHttpClient());
+    }
+
     public function runnerLauncher(): RunnerLauncher
     {
         return $this->launcher ?? new DetachedRunnerLauncher($this->config->phpCli, $this->config->entryScript, $this->config->dataDir);
@@ -182,6 +193,7 @@ final class Application
             $this->logs(),
             new SymfonyProcessStepExecutor($this->config->killGraceSeconds),
             $this->clock,
+            new NotifyRunFinished($this->projects(), $this->notifiers(), $this->runs(), $this->logs(), $this->notifier(), $this->clock),
         );
     }
 
@@ -234,7 +246,7 @@ final class Application
             new Login($this->users(), new SqliteLoginAttempts($this->pdo()), $this->sessions(), $this->clock),
             $this->sessions(),
         ))->register($router);
-        (new NotifiersController($this->notifiers(), new SaveNotifier($this->notifiers())))->register($router);
+        (new NotifiersController($this->notifiers(), new SaveNotifier($this->notifiers()), $this->notifier()))->register($router);
         (new ProjectsController(
             $this->projects(),
             new SaveProject($this->projects(), $this->notifiers()),

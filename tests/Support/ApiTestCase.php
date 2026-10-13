@@ -20,6 +20,7 @@ abstract class ApiTestCase extends TestCase
     protected Application $app;
     protected FixedClock $clock;
     protected RecordingLauncher $launcher;
+    protected FakeHttpClient $http;
     /** @var array<string,string> */
     protected array $cookies = [];
     protected ?string $csrf = null;
@@ -28,10 +29,12 @@ abstract class ApiTestCase extends TestCase
     {
         $this->clock = new FixedClock();
         $this->launcher = new RecordingLauncher();
+        $this->http = new FakeHttpClient();
         $this->app = new Application(
             new AppConfig($this->makeTempDir(), PHP_BINARY, dirname(__DIR__, 2) . '/bin/deployer', false),
             $this->clock,
             $this->launcher,
+            $this->http,
         );
     }
 

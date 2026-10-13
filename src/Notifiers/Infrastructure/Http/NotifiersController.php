@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Deployer\Notifiers\Infrastructure\Http;
 
+use Deployer\Notifiers\Application\NotificationFailed;
+use Deployer\Notifiers\Application\Port\Notifier;
+use Deployer\Notifiers\Application\RunFinishedMessage;
 use Deployer\Notifiers\Application\SaveNotifier;
 use Deployer\Notifiers\Domain\NotifierConfig;
 use Deployer\Notifiers\Domain\NotifierRepository;
@@ -18,6 +21,7 @@ final class NotifiersController
     public function __construct(
         private readonly NotifierRepository $notifiers,
         private readonly SaveNotifier $save,
+        private readonly Notifier $notifier,
     ) {
     }
 
@@ -43,6 +47,16 @@ final class NotifiersController
                 $this->notifiers->delete($this->load($p)->id);
 
                 return Response::noContent();
+            })
+            ->add('POST', '/api/notifiers/{id}/test', function (Request $r, array $p): Response {
+                $channel = $this->load($p);
+                try {
+                    $this->notifier->send($channel, RunFinishedMessage::test($channel->name));
+                } catch (NotificationFailed $e) {
+                    throw new ApiError(502, 'notification_failed', $e->getMessage());
+                }
+
+                return Response::json(['sent' => true]);
             });
     }
 

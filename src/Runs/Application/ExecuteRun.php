@@ -9,6 +9,7 @@ use Deployer\Pipeline\Domain\BuiltinVars;
 use Deployer\Pipeline\Domain\PipelineValidationError;
 use Deployer\Projects\Domain\InstructionsStore;
 use Deployer\Projects\Domain\ProjectRepository;
+use Deployer\Runs\Application\Port\RunFinishedListener;
 use Deployer\Runs\Application\Port\StepExecutor;
 use Deployer\Runs\Application\Port\StepOutcome;
 use Deployer\Runs\Domain\LogRepository;
@@ -35,6 +36,7 @@ final class ExecuteRun
         private readonly LogRepository $logs,
         private readonly StepExecutor $executor,
         private readonly Clock $clock,
+        private readonly ?RunFinishedListener $onFinished = null,
     ) {
     }
 
@@ -50,6 +52,15 @@ final class ExecuteRun
 
         $this->system($run->id, null, sprintf('Run finished: %s', $status->value));
         $this->runs->finish($run->id, $status, $error, $this->clock->now());
+
+        // After the final status is persisted, so a listener can never change it.
+        if ($this->onFinished !== null) {
+            try {
+                $this->onFinished->runFinished($run->id);
+            } catch (Throwable $e) {
+                $this->system($run->id, null, 'Run-finished hook failed: ' . $e->getMessage());
+            }
+        }
 
         return $status;
     }
