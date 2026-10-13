@@ -1,0 +1,31 @@
+/** Inline stroke icon paths on a 24px grid; the app ships no icon font or remote assets. */
+export const iconPaths = {
+  overview: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
+  projects: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  runs: 'M22 12h-4l-3 9L9 3l-3 9H2',
+  notifiers: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
+  logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  menu: 'M4 6h16M4 12h16M4 18h16',
+  close: 'M18 6 6 18M6 6l12 12',
+  check: 'M20 6 9 17l-5-5',
+  x: 'M18 6 6 18M6 6l12 12',
+  circle: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
+  spinner: 'M21 12a9 9 0 1 1-6.22-8.56',
+  ban: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8',
+  clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
+  skip: 'M5 4l10 8-10 8zM19 5v14',
+  copy: 'M8 8h12v12H8zM16 8V4H4v12h4',
+  plus: 'M12 5v14M5 12h14',
+  rocket: 'M5 19c-1-3 0-6 2-8l6-6c2-1 4-1 6-1 0 2 0 4-1 6l-6 6c-2 2-5 3-8 2zM9 15l-4 4M14.5 9.5h.01',
+  chevron: 'm9 18 6-6-6-6',
+  arrowDown: 'M12 5v14M19 12l-7 7-7-7',
+  edit: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z',
+  trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6',
+  file: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M10 13l-2 2 2 2M14 13l2 2-2 2',
+  webhook: 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
+  send: 'M22 2 11 13M22 2l-7 20-4-9-9-4z',
+  key: 'M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zM15.5 7.5l3 3L22 7l-3-3',
+  alert: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+} as const
+
+export type IconName = keyof typeof iconPaths

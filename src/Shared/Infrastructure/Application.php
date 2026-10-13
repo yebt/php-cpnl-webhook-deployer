@@ -64,6 +64,7 @@ use Deployer\Shared\Infrastructure\Http\ApiError;
 use Deployer\Shared\Infrastructure\Http\Request;
 use Deployer\Shared\Infrastructure\Http\Response;
 use Deployer\Shared\Infrastructure\Http\Router;
+use Deployer\Shared\Infrastructure\Http\StaticSite;
 use Deployer\Shared\Infrastructure\Persistence\Database;
 use Deployer\Shared\Infrastructure\Persistence\Migrator;
 use Phar;
@@ -87,6 +88,8 @@ final class Application
         private readonly ?RunnerLauncher $launcher = null,
         /** Overrides the curl client (tests). */
         private readonly ?HttpClient $httpClient = null,
+        /** Directory holding the built SPA; defaults to frontend/dist next to src/ (inside the phar when packaged). */
+        private readonly ?string $webRoot = null,
     ) {
     }
 
@@ -268,6 +271,10 @@ final class Application
 
     public function handle(Request $request): Response
     {
+        if (StaticSite::handles($request)) {
+            return (new StaticSite($this->webRoot ?? dirname(__DIR__, 3) . '/frontend/dist'))->respond($request);
+        }
+
         try {
             // Webhooks still trigger with an oversized body (e.g. a huge push payload); it is just ignored.
             if ($request->bodyTooLarge && !str_starts_with($request->path, '/hooks/')) {

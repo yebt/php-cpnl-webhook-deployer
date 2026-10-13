@@ -20,7 +20,7 @@ final class EntryPointsTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->app = new Application(new AppConfig($this->makeTempDir(), PHP_BINARY, '/x/bin/deployer', false));
+        $this->app = new Application(new AppConfig($this->makeTempDir(), PHP_BINARY, '/x/bin/deployer', false), webRoot: '/nonexistent-web-root');
     }
 
     protected function tearDown(): void

@@ -29,13 +29,22 @@ final class Request
         public readonly string $remoteAddr = '',
         public readonly bool $https = false,
         public readonly bool $bodyTooLarge = false,
+        /** URL prefix in front of the route path: '' behind a rewrite, '/index.php' for PATH_INFO URLs. */
+        public readonly string $basePath = '',
         private readonly array $attributes = [],
     ) {
     }
 
     public static function fromGlobals(): self
     {
-        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+        $uriPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+        [$basePath, $path] = self::splitPath(
+            is_string($uriPath) && $uriPath !== '' ? $uriPath : '/',
+            (string) ($_SERVER['SCRIPT_NAME'] ?? ''),
+            // Set by the shipped .htaccess (`E=DEPLOYER_REWRITE:1`); Apache prefixes REDIRECT_ after an internal rewrite.
+            isset($_SERVER['DEPLOYER_REWRITE']) || isset($_SERVER['REDIRECT_DEPLOYER_REWRITE']),
+            PHP_SAPI === 'cli-server',
+        );
         $headers = [];
         foreach ($_SERVER as $key => $value) {
             if (is_string($value) && str_starts_with($key, 'HTTP_')) {
@@ -62,7 +71,7 @@ final class Request
 
         return new self(
             method: strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')),
-            path: is_string($path) && $path !== '' ? $path : '/',
+            path: $path,
             query: array_filter($_GET, 'is_string'),
             headers: $headers,
             body: $tooLarge ? '' : $body,
@@ -70,7 +79,40 @@ final class Request
             remoteAddr: (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
             https: $https,
             bodyTooLarge: $tooLarge,
+            basePath: $basePath,
         );
+    }
+
+    /**
+     * Splits the URL path into [base path, route path] so the same artifact works:
+     *  - behind a rewrite to index.php (clean URLs, base '' or the install subdirectory);
+     *  - without one, through PATH_INFO URLs (`/index.php/projects/3`, base '/index.php').
+     * The bare root without a rewrite marker most likely came through Apache's DirectoryIndex,
+     * where clean deep links would 404, so it uses the PATH_INFO base. PHP's built-in server
+     * routes every path to the script, so it always keeps clean URLs.
+     *
+     * @return array{string, string}
+     */
+    public static function splitPath(string $uriPath, string $scriptName, bool $rewritten, bool $builtinServer): array
+    {
+        // Only a real PHP script counts: php -S reports the request path when its docroot has no match.
+        $scriptName = str_ends_with($scriptName, '.php') ? $scriptName : '';
+        $scriptDir = $scriptName === '' ? '' : rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
+        $base = '';
+        $path = $uriPath;
+        foreach ([$scriptName, $scriptDir] as $prefix) {
+            if ($prefix !== '' && ($uriPath === $prefix || str_starts_with($uriPath, $prefix . '/'))) {
+                $base = $prefix;
+                $path = substr($uriPath, strlen($prefix));
+                break;
+            }
+        }
+        $path = $path === '' ? '/' : $path;
+        if ($path === '/' && $base !== $scriptName && $scriptName !== '' && !$rewritten && !$builtinServer) {
+            $base = $scriptName;
+        }
+
+        return [$base, $path];
     }
 
     public function header(string $name): ?string
@@ -111,6 +153,7 @@ final class Request
             $this->remoteAddr,
             $this->https,
             $this->bodyTooLarge,
+            $this->basePath,
             [...$this->attributes, $name => $value],
         );
     }
