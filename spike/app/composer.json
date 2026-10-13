@@ -1,0 +1,14 @@
+{
+    "name": "deployer/typephp-spike",
+    "type": "project",
+    "require": {
+        "php": ">=8.4",
+        "symfony/process": "^7.3",
+        "symfony/yaml": "^7.3",
+        "symfony/var-dumper": "^7.3"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "classmap-authoritative": true
+    }
+}

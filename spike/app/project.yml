@@ -1,0 +1,13 @@
+name: deployer
+mode: bin
+php-version: "8.4"
+optimize: 2
+build-dir: ../.build/app
+
+# The spike's own code is AOT-compiled.
+sources:
+  - main.php
+
+# Symfony components run as embedded OPcache bytecode inside the binary.
+embedded-files:
+  - vendor

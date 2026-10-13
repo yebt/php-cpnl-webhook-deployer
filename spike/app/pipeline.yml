@@ -1,0 +1,11 @@
+vars:
+  APP_DIR: /srv/myapp
+  BRANCH: main
+  RELEASE: "2026-10-13_01"
+steps:
+  - name: fetch
+    run: git -C ${APP_DIR} fetch origin ${BRANCH}
+  - name: release
+    run: mkdir -p ${APP_DIR}/releases/${RELEASE}
+  - name: unknown-var-kept
+    run: echo ${NOT_DEFINED}

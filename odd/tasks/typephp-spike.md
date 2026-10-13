@@ -25,7 +25,7 @@ ask-on-risk. Forecast: ~300 authored changed lines (spike code + Containerfile +
 
 ## Tasks
 - [x] T1 — Build environment: Containerfile + script; `tpc` compiles and runs a hello-world binary. Route: delegated (research + multi-file).
-- [ ] T2 — YAML: compiled binary parses a YAML with a `vars` block and interpolates into steps. Route: delegated.
+- [x] T2 — YAML: compiled binary parses a YAML with a `vars` block and interpolates into steps. Route: delegated.
 - [ ] T3 — Process: compiled binary runs a command via symfony/process, streams stdout/stderr live with timestamps, cancels mid-run (SIGTERM then SIGKILL), reports exit code. Route: delegated.
 - [ ] T4 — HTTP: compiled binary serves HTTP (Swoole ext or alternative), streams a run's output live (SSE/chunked), cancel endpoint works, two runs execute concurrently. Route: delegated.
 - [ ] T5 — Findings report `docs/spike-typephp.md`: what worked, what failed (exact errors), binary size/runtime deps, go/no-go. Route: delegated.
@@ -37,7 +37,9 @@ Each check is reproducible with one documented command; outputs observed, not as
 Test-first exception: this is an exploratory spike with no existing test runner; each task's check is a reproducible run of the compiled binary with observed output.
 
 ## Progress / Evidence
-- T1 PASS. Image `localhost/typephp-spike` = `php:8.4-zts` (Debian 13, PHP 8.4.26 ZTS, `--enable-embed`, `/usr/local/lib/libphp.so`, OPcache) + build-essential/cmake/GMP/MPFR + Composer 2 + TypePHP @ 89fe80a + PHPX v2.9.4 (`libphpx.so` built with CMake). `spike/build.sh hello` output: `Hello from TypePHP!` / `PHP_VERSION=8.4.26 ZTS=1`. Binary 52,504 bytes, dynamically linked to `libphpx.so` + `libphp.so` (+ ~40 system libs). Commit: see below.
+- T1 PASS. Image `localhost/typephp-spike` = `php:8.4-zts` (Debian 13, PHP 8.4.26 ZTS, `--enable-embed`, `/usr/local/lib/libphp.so`, OPcache) + build-essential/cmake/GMP/MPFR + Composer 2 + TypePHP @ 89fe80a + PHPX v2.9.4 (`libphpx.so` built with CMake). `spike/build.sh hello` output: `Hello from TypePHP!` / `PHP_VERSION=8.4.26 ZTS=1`. Binary 52,504 bytes, dynamically linked to `libphpx.so` + `libphp.so` (+ ~40 system libs). Commit: 4c15c84.
+
+- T2 PASS. `spike/build.sh yaml`: binary (3,870,192 bytes, `embedded-files: vendor`, 163 files / 133 opcode blobs; symfony/yaml v7.4.20) run from an empty dir without vendor/ prints `step 1 [fetch]: git -C /srv/myapp fetch origin main` and keeps unknown `${NOT_DEFINED}`. Closures with `use`, `preg_replace_callback`, `Yaml::parseFile` all work.
 
 ## Next step
 T1.

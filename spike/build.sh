@@ -4,6 +4,7 @@
 #
 #   spike/build.sh image          build the container image
 #   spike/build.sh hello          compile + run spike/hello
+#   spike/build.sh compile        composer install + compile spike/app
 #   spike/build.sh yaml           compile + run spike/app (yaml check)
 #   spike/build.sh process        compile + run spike/app (process check)
 #   spike/build.sh http           compile spike/app and exercise the HTTP check
@@ -25,6 +26,18 @@ case "${1:-}" in
     hello)
         run "set -e; cd hello && tpc.php hello.php --build-dir /work/.build/hello -O2 -j $JOBS --no-progress --no-color --php-version=8.4 -o hello \
              && ./hello && ls -l hello && ldd hello"
+        ;;
+    deps)
+        run "cd app && composer install --no-dev --classmap-authoritative --no-progress"
+        ;;
+    compile)
+        run "set -e; cd app && test -d vendor || composer install --no-dev --classmap-authoritative --no-progress; \
+             tpc.php project.yml -j $JOBS --no-progress --no-color -o deployer && ls -l deployer"
+        ;;
+    yaml)
+        "$0" compile
+        # Run from an empty directory to prove vendor/ is not read from disk.
+        run "set -e; mkdir -p /tmp/rt && cp app/deployer app/pipeline.yml /tmp/rt/ && cd /tmp/rt && ./deployer yaml pipeline.yml"
         ;;
     shell)
         PODMAN_TTY=-it run bash
