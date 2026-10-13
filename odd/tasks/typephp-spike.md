@@ -45,5 +45,8 @@ Test-first exception: this is an exploratory spike with no existing test runner;
 - Extra (bounded): php-builder static runtime FAIL. Static Swoole link error `undefined reference to 'swoole_module_entry'` (only Swoole thirdparty objects built); without Swoole, the static PHP builds but a later requirement lookup fails with `curl: (22) ... 404`. Earlier attempts hit a nested `:Z` bind-mount tar permission error (fixed with a named volume) and missing oniguruma for mbstring (dropped).
 - T5 PASS. `docs/spike-typephp.md` written. Recommendation: NO-GO for TypePHP packaging; fallback static-php-cli micro + phar (preferred) or swoole-cli + phar. Commit 584cc41 = T4; T5 commit recorded in the final report.
 
+## Decision
+TypePHP is discarded for packaging. static-php-cli (micro.sfx + app phar, with swoole/pcntl/posix) is kept as the binary-generation option; swoole-cli + phar stays as a secondary alternative. Its validation against the same four checks is deferred until packaging is needed.
+
 ## Next step
-Validate the fallback (static-php-cli micro.sfx + phar) against the same four checks.
+Design the deployer itself (packaging-agnostic: plain PHP 8.4 + Swoole + Symfony components).
