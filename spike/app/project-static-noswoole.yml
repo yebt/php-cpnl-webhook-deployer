@@ -1,0 +1,7 @@
+# Experimental: php-builder static runtime WITHOUT Swoole (isolates whether
+# the static path itself works for the YAML + process checks).
+include: project.yml
+build-dir: ../.build/app-static-noswoole
+php-builder:
+  extensions: [pcntl, posix, ctype, tokenizer]
+  zts: on

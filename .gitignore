@@ -7,3 +7,4 @@ spike/app/build/
 build/
 *.o
 *.gch
+spike/app/deployer-static

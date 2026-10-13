@@ -1,0 +1,9 @@
+# Experimental: private static PHP runtime built from php-src by TypePHP's
+# php-builder, with Swoole compiled in, to try to remove libphp.so/swoole.so
+# from the runtime dependencies.
+include: project.yml
+build-dir: ../.build/app-static
+php-builder:
+  # mbstring dropped: needs libonig-dev; symfony/polyfill-mbstring covers it.
+  extensions: [swoole, pcntl, posix, ctype, tokenizer]
+  zts: on

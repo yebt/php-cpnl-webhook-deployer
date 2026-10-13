@@ -8,6 +8,8 @@
 #   spike/build.sh yaml           compile + run spike/app (yaml check)
 #   spike/build.sh process        compile + run spike/app (process check)
 #   spike/build.sh http           compile spike/app and exercise the HTTP check
+#   spike/build.sh static         experimental php-builder static runtime (+Swoole)
+#   spike/build.sh static-noswoole  same, without Swoole
 #   spike/build.sh shell          interactive shell in the image
 set -euo pipefail
 
@@ -50,10 +52,21 @@ case "${1:-}" in
         "$0" compile
         run "set -e; mkdir -p /tmp/rt && cp app/deployer http-check.sh /tmp/rt/ && cd /tmp/rt && ./http-check.sh ./deployer"
         ;;
+    static|static-noswoole)
+        PROJECT=project-static.yml; [ "$1" = static-noswoole ] && PROJECT=project-static-noswoole.yml
+        # Experimental php-builder build; ~/.typephp cache kept in a named volume
+        # (a nested :Z bind mount broke tar extraction with "Permission denied").
+        podman run --rm -v "$HERE:/work:Z" -v typephp-spike-home:/root/.typephp -w /work "$IMAGE" bash -c \
+            "set -e; cd app && tpc.php $PROJECT -j $JOBS --no-progress --no-color -o deployer-static \
+             && ls -l deployer-static && ldd deployer-static \
+             && mkdir -p /tmp/rt && cp deployer-static pipeline.yml ../http-check.sh /tmp/rt/ && cd /tmp/rt \
+             && PHP_INI_SCAN_DIR= ./deployer-static yaml pipeline.yml \
+             && PHP_INI_SCAN_DIR= ./http-check.sh ./deployer-static"
+        ;;
     shell)
         PODMAN_TTY=-it run bash
         ;;
     *)
-        sed -n '2,12p' "$0"; exit 1
+        sed -n '2,15p' "$0"; exit 1
         ;;
 esac
