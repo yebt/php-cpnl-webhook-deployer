@@ -4,7 +4,20 @@ spike/**/vendor/
 spike/hello/hello
 spike/app/deployer
 spike/app/build/
-build/
+spike/**/build/
 *.o
 *.gch
 spike/app/deployer-static
+/app/
+/hello/
+
+# Deployer application
+/vendor/
+/dist/
+/data/
+/deployer-data/
+/build/.staging/
+node_modules/
+/.phpunit.cache/
+/.phpunit.result.cache
+/deployer.config.php
