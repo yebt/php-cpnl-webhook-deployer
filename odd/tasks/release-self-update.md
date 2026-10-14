@@ -31,7 +31,7 @@ User asked to organize everything on `main`: work happens on `feat/release-self-
 ## Tasks
 - [x] T1 — Version stamping + GitHub Actions (CI tests + release build/upload). Route: delegated. Commit `e863797`.
 - [x] T2 — Self-update core (release client, checksum, phar validation, atomic swap, backup) + CLI `self-update`. TDD with fake HTTP client. Route: delegated. Commit `ade84db`.
-- [ ] T3 — API + UI Updates view + README section. Route: delegated.
+- [x] T3 — API + UI Updates view + README section. Route: delegated. Commit `0e9e603`.
 
 ## Acceptance criteria
 - Pushing tag `vX.Y.Z` produces a release with the three assets and the phar reports version `X.Y.Z`.
@@ -53,6 +53,10 @@ PHPUnit, vitest, vue-tsc, php lint, actionlint if available, local self-update s
   - Real-build simulation: `DEPLOYER_VERSION=0.1.0` and `0.2.0` builds; fake GitHub API on `php -S 127.0.0.1:18765` (302 redirect for the phar asset) via `DEPLOYER_UPDATE_API`. `self-update --check` → exit 2 "Update available: 0.1.0 -> 0.2.0"; `self-update` → exit 0, `about` now `Deployer 0.2.0`, `index.php.bak` reports 0.1.0, mode 0640 kept; rerun → "already up to date" exit 0. With a zeroed `.sha256`: exit 1 "Checksum mismatch ... not touched", sha256 of `index.php` unchanged, no `.bak`/temp file. From source: exit 1 "only works for the packaged phar".
   - Migrations on next boot: verified, `Application::pdo()` runs `Migrator::migrate()` on the first DB use of every request/command; nothing added.
   - Size: ~1000 authored source lines + ~860 test lines, above the 400-line advisory heuristic because the adapter, installer and CLI only make sense together with their security checks.
+- T3 (delegated writer): `UpdatesController` (`GET /api/updates`, `POST /api/updates/apply`), `useUpdates` composable + `UpdatePanel` + `UpdatesView`, sidebar entry, README (Quick path download, Updates, config keys, Releasing).
+  - RED: `vendor/bin/phpunit tests/Api/UpdatesApiTest.php` → 6 failures (no route); `npx vitest run` → `useUpdates.test.ts` failed to import. GREEN: PHPUnit 226 tests, 787 assertions OK; vitest 26 passed; `vue-tsc --noEmit` OK; `npm run build` OK; php lint 0 errors.
+  - Web simulation (0.1.0 phar served by `php -S` as `index.php`, fake API at 127.0.0.1): `/api/me` → `app.version` 0.1.0; `GET /api/updates` → available 0.2.0, `can_apply` true; `POST /api/updates/apply` without token → 403 `csrf_mismatch`; with token → `{"updated":true,"from":"0.1.0","to":"0.2.0","backup_file":"index.php.bak"}`; next `/api/me` reports 0.2.0; `/updates` serves the SPA (200).
+  - Not exercised: a real browser session of the Updates view, and Apache + PHP-FPM with OPcache `validate_timestamps=0`.
 
 ## Decisions
 - `/api/health` is public, so it no longer returns the version; the version moved to the authenticated `/api/me` (`app.version`).
@@ -67,6 +71,9 @@ PHPUnit, vitest, vue-tsc, php lint, actionlint if available, local self-update s
 - OPcache: `opcache_invalidate()` on the file and, when `opcache_get_status()` is allowed, on every cached `phar://<file>/...` script.
 - CLI exit codes: 0 updated/up to date, 1 refused/failed, 2 `--check` found an update.
 - No stream-wrapper fallback for HTTP: ext-curl stays required (as for Telegram).
+- The API never forces: `POST /api/updates/apply` ignores any `force` flag, so dev builds (409 `dev_build_requires_force`) and source checkouts (409 `not_running_from_phar`) are CLI-only. Refusals map to 409 with the refusal code, GitHub/transport errors to 502 (`update_check_failed` / `update_failed`). The apply response returns only the backup file name, not its absolute path.
+- Update use cases are built lazily in the router, so a bad update setting breaks only the two update routes.
+- Rollback documentation states that migrations are not reverted.
 
 ## Next step
-T3.
+Parent: review, fast-forward `main`, push, then tag `v0.1.0` (or the chosen first version) to produce the first release.
