@@ -75,4 +75,38 @@ final class ConfigLoaderTest extends TestCase
         $this->expectException(RuntimeException::class);
         ConfigLoader::load($root . '/index.php', true, [], 'cli', '/usr/bin/php');
     }
+
+    public function testSelfUpdateDefaultsToThePublicRepository(): void
+    {
+        $config = ConfigLoader::load($this->makeTempDir() . '/index.php', true, [], 'cli', PHP_BINARY);
+
+        self::assertSame('yebt/php-cpnl-webhook-deployer', $config->updateRepository);
+        self::assertNull($config->updateToken);
+        self::assertFalse($config->updatePrereleases);
+        self::assertSame('https://api.github.com', $config->updateApiUrl);
+    }
+
+    public function testSelfUpdateSettingsComeFromFileAndEnvironment(): void
+    {
+        $root = $this->makeTempDir();
+        file_put_contents($root . '/deployer.config.php', "<?php return ['update_repository' => 'acme/fork', 'update_token' => 'file-token', 'update_prereleases' => true];");
+
+        $fromFile = ConfigLoader::load($root . '/index.php', true, [], 'cli', PHP_BINARY);
+        self::assertSame('acme/fork', $fromFile->updateRepository);
+        self::assertSame('file-token', $fromFile->updateToken);
+        self::assertTrue($fromFile->updatePrereleases);
+
+        $fromEnv = ConfigLoader::load($root . '/index.php', true, ['DEPLOYER_UPDATE_TOKEN' => 'env-token', 'DEPLOYER_UPDATE_REPOSITORY' => 'acme/other'], 'cli', PHP_BINARY);
+        self::assertSame('env-token', $fromEnv->updateToken);
+        self::assertSame('acme/other', $fromEnv->updateRepository);
+    }
+
+    public function testUpdatePrereleasesMustBeABoolean(): void
+    {
+        $root = $this->makeTempDir();
+        file_put_contents($root . '/deployer.config.php', "<?php return ['update_prereleases' => 'yes'];");
+
+        $this->expectException(RuntimeException::class);
+        ConfigLoader::load($root . '/index.php', true, [], 'cli', PHP_BINARY);
+    }
 }

@@ -11,7 +11,8 @@ use RuntimeException;
  *
  * The config file is `deployer.config.php` placed next to the artifact (the phar,
  * or the repository root when running from source). It must return an array with
- * any of the keys `data_dir`, `php_cli`, `kill_grace_seconds`. A PHP file is used
+ * any of the keys `data_dir`, `php_cli`, `kill_grace_seconds`, `update_repository`,
+ * `update_token`, `update_prereleases`. A PHP file is used
  * on purpose: when the artifact lives in a web root, Apache executes it instead of
  * serving its contents.
  */
@@ -61,6 +62,11 @@ final class ConfigLoader
             throw new RuntimeException('kill_grace_seconds must be a non-negative number.');
         }
 
+        $prereleases = $file['update_prereleases'] ?? false;
+        if (!is_bool($prereleases)) {
+            throw new RuntimeException('update_prereleases must be true or false.');
+        }
+
         return new AppConfig(
             dataDir: rtrim($dataDir, '/'),
             phpCli: $phpCli,
@@ -68,6 +74,13 @@ final class ConfigLoader
             isPhar: $isPhar,
             killGraceSeconds: (float) $grace,
             configFile: $configFile,
+            updateRepository: self::nonEmpty($env['DEPLOYER_UPDATE_REPOSITORY'] ?? null)
+                ?? self::nonEmpty($file['update_repository'] ?? null)
+                ?? AppConfig::DEFAULT_UPDATE_REPOSITORY,
+            updateToken: self::nonEmpty($env['DEPLOYER_UPDATE_TOKEN'] ?? null) ?? self::nonEmpty($file['update_token'] ?? null),
+            updatePrereleases: $prereleases,
+            // Environment only (never the config file): local self-update simulations against a loopback server.
+            updateApiUrl: self::nonEmpty($env['DEPLOYER_UPDATE_API'] ?? null) ?? 'https://api.github.com',
         );
     }
 

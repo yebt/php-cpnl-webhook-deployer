@@ -67,6 +67,11 @@ use Deployer\Shared\Infrastructure\Http\Router;
 use Deployer\Shared\Infrastructure\Http\StaticSite;
 use Deployer\Shared\Infrastructure\Persistence\Database;
 use Deployer\Shared\Infrastructure\Persistence\Migrator;
+use Deployer\Updates\Application\ApplyUpdate;
+use Deployer\Updates\Application\CheckForUpdate;
+use Deployer\Updates\Infrastructure\Cli\SelfUpdateCommand;
+use Deployer\Updates\Infrastructure\FilesystemPharInstaller;
+use Deployer\Updates\Infrastructure\GitHubReleaseSource;
 use Phar;
 use PDO;
 use Throwable;
@@ -171,6 +176,33 @@ final class Application
         return new TelegramNotifier($this->httpClient ?? new CurlHttpClient());
     }
 
+    public function releaseSource(): GitHubReleaseSource
+    {
+        return new GitHubReleaseSource(
+            $this->httpClient ?? new CurlHttpClient(),
+            $this->config->updateRepository,
+            $this->config->updateToken,
+            'webcloster-deployer/' . $this->version(),
+            $this->config->updateApiUrl,
+        );
+    }
+
+    public function checkForUpdate(): CheckForUpdate
+    {
+        return new CheckForUpdate($this->releaseSource(), $this->version(), $this->config->updatePrereleases);
+    }
+
+    /** Replaces the running phar; refuses when running from source. */
+    public function applyUpdate(): ApplyUpdate
+    {
+        return new ApplyUpdate(
+            $this->checkForUpdate(),
+            $this->releaseSource(),
+            new FilesystemPharInstaller(),
+            $this->config->isPhar ? $this->config->entryScript : '',
+        );
+    }
+
     public function runnerLauncher(): RunnerLauncher
     {
         return $this->launcher ?? new DetachedRunnerLauncher($this->config->phpCli, $this->config->entryScript, $this->config->dataDir);
@@ -237,7 +269,8 @@ final class Application
             ->add(new RunnerSweepCommand($this))
             ->add(new TriggerRunCommand($this))
             ->add(new CancelRunCommand($this))
-            ->add(new UserPasswordCommand($this));
+            ->add(new UserPasswordCommand($this))
+            ->add(new SelfUpdateCommand($this));
     }
 
     public function router(): Router
