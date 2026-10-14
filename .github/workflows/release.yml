@@ -1,0 +1,76 @@
+name: Release
+
+# Pushing a tag vX.Y.Z builds the phar stamped with X.Y.Z and publishes it,
+# with its checksum and the optional rewrite rules, on the GitHub Release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: shivammathur/setup-php@2.40.0
+        with:
+          php-version: '8.2'
+          extensions: curl, pdo_sqlite, phar
+          ini-values: phar.readonly=0
+          coverage: none
+          tools: composer:v2
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Derive the version from the tag
+        run: |
+          version="${TAG#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+            echo "::error::Tag $TAG is not vX.Y.Z[-prerelease]"
+            exit 1
+          fi
+          echo "DEPLOYER_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build the web UI and the phar
+        run: build/build.sh
+
+      - name: Check the stamped version
+        run: |
+          php dist/deployer.phar about | tee about.txt
+          grep -q "^Deployer ${DEPLOYER_VERSION}\$" about.txt
+        env:
+          DEPLOYER_DATA_DIR: ${{ runner.temp }}/deployer-data
+
+      - name: Prepare release assets
+        working-directory: dist
+        run: |
+          sha256sum deployer.phar > deployer.phar.sha256
+          # GitHub renames asset names that start with a dot, so ship the rules under a visible name.
+          cp .htaccess deployer.htaccess
+          cat deployer.phar.sha256
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            flags=(--title "$TAG" --generate-notes --verify-tag)
+            if [[ "$DEPLOYER_VERSION" == *-* ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "$TAG" "${flags[@]}"
+          fi
+          gh release upload "$TAG" dist/deployer.phar dist/deployer.phar.sha256 dist/deployer.htaccess --clobber

@@ -6,7 +6,12 @@ declare(strict_types=1);
  * Builds dist/deployer.phar (plus the optional dist/.htaccess).
  *
  * Usage: build/build.sh (builds the web UI first), or, with a prebuilt
- * frontend/dist: php -d phar.readonly=0 build/build-phar.php
+ * frontend/dist: php -d phar.readonly=0 build/build-phar.php [--version=X.Y.Z]
+ *
+ * Version stamp (written as VERSION at the phar root, read by AppVersion):
+ * --version=..., else $DEPLOYER_VERSION, else the exact `vX.Y.Z` tag of HEAD,
+ * else `dev`. A leading `v` is stripped; anything that is not semver or `dev`
+ * aborts the build.
  *
  * The built web UI (frontend/dist) is required and embedded under
  * frontend/dist/ inside the phar, where the front controller serves it from.
@@ -28,6 +33,30 @@ $dist = $root . '/dist';
 $target = $dist . '/deployer.phar';
 $composer = getenv('COMPOSER_BIN') ?: 'composer';
 $webDist = $root . '/frontend/dist';
+
+require $root . '/src/Shared/Infrastructure/AppVersion.php';
+
+$version = null;
+foreach (array_slice($argv, 1) as $arg) {
+    if (str_starts_with($arg, '--version=')) {
+        $version = substr($arg, strlen('--version='));
+    } else {
+        fwrite(STDERR, "Unknown argument: $arg\n");
+        exit(2);
+    }
+}
+if ($version === null || $version === '') {
+    $version = getenv('DEPLOYER_VERSION') ?: null;
+}
+if ($version === null) {
+    $tag = trim((string) @shell_exec('git -C ' . escapeshellarg($root) . ' describe --tags --exact-match --match "v*" 2>/dev/null'));
+    $version = $tag !== '' ? $tag : Deployer\Shared\Infrastructure\AppVersion::DEV;
+}
+$version = preg_replace('/^v/', '', trim($version));
+if (!Deployer\Shared\Infrastructure\AppVersion::isValid($version)) {
+    fwrite(STDERR, "Invalid version \"$version\": expected X.Y.Z[-prerelease] or dev\n");
+    exit(1);
+}
 
 if (!is_file($webDist . '/index.html')) {
     fwrite(STDERR, "frontend/dist/index.html is missing; run build/build.sh (or `npm ci && npm run build` in frontend/) first\n");
@@ -96,6 +125,7 @@ if (is_file($target)) {
 
 $phar = new Phar($target, 0, 'deployer.phar');
 $phar->startBuffering();
+$phar->addFromString('VERSION', $version . "\n");
 $phar->buildFromDirectory($staging, '#^' . preg_quote($staging, '#') . '/(src|public|vendor)/(?!.*/(tests?|Tests?|docs?)/).*\.php$#');
 $assets = 0;
 foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($webDist, FilesystemIterator::SKIP_DOTS)) as $file) {
@@ -116,4 +146,4 @@ unset($phar);
 removeTree($staging);
 copy($root . '/public/.htaccess', $dist . '/.htaccess');
 
-printf("Built %s (%s KiB, %d web assets) and %s/.htaccess\n", $target, number_format(filesize($target) / 1024, 1), $assets, $dist);
+printf("Built %s version %s (%s KiB, %d web assets) and %s/.htaccess\n", $target, $version, number_format(filesize($target) / 1024, 1), $assets, $dist);

@@ -20,7 +20,7 @@ final class EntryPointsTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->app = new Application(new AppConfig($this->makeTempDir(), PHP_BINARY, '/x/bin/deployer', false), webRoot: '/nonexistent-web-root');
+        $this->app = new Application(new AppConfig($this->makeTempDir(), PHP_BINARY, '/x/bin/deployer', false), webRoot: '/nonexistent-web-root', version: '3.2.1');
     }
 
     protected function tearDown(): void
@@ -45,7 +45,7 @@ final class EntryPointsTest extends TestCase
         [$code, $out] = $this->cli('about');
 
         self::assertSame(0, $code);
-        self::assertStringContainsString('Deployer ' . Application::VERSION, $out);
+        self::assertStringContainsString('Deployer 3.2.1', $out);
         self::assertMatchesRegularExpression('/Schema\s+' . max(array_keys(Migrations::all())) . '\b/', $out);
     }
 
@@ -61,7 +61,7 @@ final class EntryPointsTest extends TestCase
     {
         $ok = $this->app->handle(new Request('GET', '/api/health'));
         self::assertSame(200, $ok->status);
-        self::assertSame('ok', json_decode($ok->body, true)['status']);
+        self::assertSame(['status' => 'ok'], json_decode($ok->body, true), 'the public health check does not disclose the version');
 
         self::assertSame(404, $this->app->handle(new Request('GET', '/missing'))->status);
         self::assertSame(405, $this->app->handle(new Request('POST', '/api/health'))->status);

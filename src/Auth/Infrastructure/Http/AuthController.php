@@ -25,6 +25,7 @@ final class AuthController
         private readonly SetupAdmin $setupAdmin,
         private readonly Login $login,
         private readonly Sessions $sessions,
+        private readonly string $appVersion,
     ) {
     }
 
@@ -77,7 +78,11 @@ final class AuthController
         $session = AuthGuard::session($request);
         $user = $this->users->find($session->userId) ?? throw new ApiError(401, 'unauthenticated', 'Authentication required.');
 
-        return Response::json(['user' => $this->user($user), 'csrf_token' => $session->csrfToken]);
+        return Response::json([
+            'user' => $this->user($user),
+            'csrf_token' => $session->csrfToken,
+            'app' => ['version' => $this->appVersion],
+        ]);
     }
 
     /** @return array{string, string} */

@@ -30,6 +30,7 @@ final class AuthApiTest extends ApiTestCase
         self::assertSame(200, $me->status);
         self::assertSame('root', $this->json($me)['user']['username']);
         self::assertSame($this->csrf, $this->json($me)['csrf_token']);
+        self::assertSame('dev', $this->json($me)['app']['version'], 'a source checkout reports the dev version');
     }
 
     public function testSetupValidatesInput(): void

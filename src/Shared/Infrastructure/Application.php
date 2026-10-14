@@ -77,8 +77,6 @@ use Throwable;
  */
 final class Application
 {
-    public const VERSION = '0.1.0-dev';
-
     private ?PDO $pdo = null;
 
     public function __construct(
@@ -90,7 +88,14 @@ final class Application
         private readonly ?HttpClient $httpClient = null,
         /** Directory holding the built SPA; defaults to frontend/dist next to src/ (inside the phar when packaged). */
         private readonly ?string $webRoot = null,
+        /** Overrides the stamped build version (tests). */
+        private readonly ?string $version = null,
     ) {
+    }
+
+    public function version(): string
+    {
+        return $this->version ?? AppVersion::current();
     }
 
     public static function fromEnvironment(): self
@@ -238,16 +243,15 @@ final class Application
     public function router(): Router
     {
         $router = (new Router())
-            ->add('GET', '/api/health', fn (): Response => Response::json([
-                'status' => 'ok',
-                'version' => self::VERSION,
-            ]));
+            // Public: deliberately does not disclose the version (it is in /api/me).
+            ->add('GET', '/api/health', fn (): Response => Response::json(['status' => 'ok']));
 
         (new AuthController(
             $this->users(),
             new SetupAdmin($this->users(), $this->clock),
             new Login($this->users(), new SqliteLoginAttempts($this->pdo()), $this->sessions(), $this->clock),
             $this->sessions(),
+            $this->version(),
         ))->register($router);
         (new NotifiersController($this->notifiers(), new SaveNotifier($this->notifiers()), $this->notifier()))->register($router);
         (new ProjectsController(

@@ -30,7 +30,7 @@ final class AboutCommand implements Command
         $config = $this->app->config();
         $schema = (new Migrator($this->app->pdo()))->currentVersion();
 
-        $console->line('Deployer ' . Application::VERSION);
+        $console->line('Deployer ' . $this->app->version());
         $console->line(sprintf('  %-14s %s', 'PHP', PHP_VERSION . ' (' . PHP_SAPI . ')'));
         $console->line(sprintf('  %-14s %s', 'Artifact', $config->entryScript . ($config->isPhar ? ' (phar)' : ' (source)')));
         $console->line(sprintf('  %-14s %s', 'Config file', $config->configFile ?? '(none)'));
