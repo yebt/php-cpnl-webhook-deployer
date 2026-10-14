@@ -72,6 +72,9 @@ use Deployer\Updates\Application\CheckForUpdate;
 use Deployer\Updates\Infrastructure\Cli\SelfUpdateCommand;
 use Deployer\Updates\Infrastructure\FilesystemPharInstaller;
 use Deployer\Updates\Infrastructure\GitHubReleaseSource;
+use Deployer\Updates\Infrastructure\Http\UpdatesController;
+use Deployer\Runs\Domain\RunFilter;
+use Deployer\Runs\Domain\RunStatus;
 use Phar;
 use PDO;
 use Throwable;
@@ -296,6 +299,13 @@ final class Application
         ))->register($router);
         (new RunsController($this->projects(), $this->runs(), $this->enqueueRun(), $this->cancelRun(), $this->readRunLogs()))->register($router);
         (new WebhookController(new WebhookTokens($this->projects()), $this->enqueueRun()))->register($router);
+        (new UpdatesController(
+            $this->checkForUpdate(...),
+            $this->applyUpdate(...),
+            $this->config->isPhar,
+            fn (): int => count($this->runs()->runningRuns())
+                + count($this->runs()->search(new RunFilter(status: RunStatus::Queued, limit: RunFilter::MAX_LIMIT))),
+        ))->register($router);
 
         return $router;
     }

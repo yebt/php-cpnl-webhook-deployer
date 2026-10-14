@@ -20,6 +20,7 @@ const nav: { to: string; label: string; icon: IconName; match: RegExp }[] = [
   { to: '/projects', label: 'Projects', icon: 'projects', match: /^\/projects/ },
   { to: '/runs', label: 'Runs', icon: 'runs', match: /^\/runs/ },
   { to: '/notifiers', label: 'Notifiers', icon: 'notifiers', match: /^\/notifiers/ },
+  { to: '/updates', label: 'Updates', icon: 'update', match: /^\/updates/ },
 ]
 
 // "Recent projects" = the projects of the latest runs, newest first, with their last status.

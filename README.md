@@ -9,11 +9,15 @@ A self-hosted deploy runner for shared hosting. It ships as **one file** (`deplo
 ## Quick path (cPanel)
 
 1. Create a subdomain, e.g. `deploy.example.com` (docroot `~/deploy.example.com`).
-2. Upload `deployer.phar` into that docroot **as `index.php`**. Optionally upload `.htaccess` too (clean URLs, see [URLs](#urls-with-or-without-htaccess)).
+2. Download `deployer.phar` from the [latest release](https://github.com/yebt/php-cpnl-webhook-deployer/releases/latest) and upload it into that docroot **as `index.php`**. Optionally upload the release's `deployer.htaccess` too, renamed to `.htaccess` (clean URLs, see [URLs](#urls-with-or-without-htaccess)).
 3. Create `deployer.config.php` next to it (see [Configuration](#configuration)) and set `php_cli`.
 4. Add the cron line for `runner:sweep` (see [Cron](#cron-recovery-sweep)).
 5. Open `https://deploy.example.com/` (or `/index.php/` without `.htaccess`) and create the admin account.
 6. Create a project, write its pipeline, press **Deploy**.
+
+Later versions install themselves: **Updates** in the dashboard, or `php index.php self-update` (see [Updates](#updates)).
+
+To verify the download first: `sha256sum -c deployer.phar.sha256` next to the downloaded `deployer.phar`.
 
 ## Requirements
 
@@ -23,7 +27,7 @@ A self-hosted deploy runner for shared hosting. It ships as **one file** (`deplo
 | `proc_open` enabled | starts the runner and the steps | see below |
 | `pdo_sqlite` | storage (one SQLite file) | `php -m \| grep -i sqlite` |
 | `phar` | the artifact is a phar | `php -m \| grep -i phar` |
-| `curl` | Telegram notifications only | `php -m \| grep -i curl` |
+| `curl` | Telegram notifications and self-update | `php -m \| grep -i curl` |
 | `mbstring` | optional (a polyfill is bundled) | — |
 | `setsid` (util-linux) | cancel/timeout kill the whole process tree | `command -v setsid` |
 
@@ -56,6 +60,9 @@ return [
 | `data_dir` | `DEPLOYER_DATA_DIR` | `<docroot>/../deployer-data` |
 | `php_cli` | `DEPLOYER_PHP_CLI` | `php` from `PATH` (under FPM) |
 | `kill_grace_seconds` | — | `5` |
+| `update_repository` | `DEPLOYER_UPDATE_REPOSITORY` | `yebt/php-cpnl-webhook-deployer` |
+| `update_token` | `DEPLOYER_UPDATE_TOKEN` | none (only needed for a private repository) |
+| `update_prereleases` | — | `false` (`true` also installs `vX.Y.Z-rc.N` releases) |
 
 Find the CLI path with `ls /opt/cpanel/ea-php*/root/usr/bin/php` or `which php` in the cPanel Terminal. Pick the same version as the subdomain. `php index.php about` prints the resolved data dir, database and PHP CLI.
 
@@ -70,7 +77,7 @@ The data dir holds `deployer.sqlite` (projects, runs, logs, users) and lock file
 
 The app detects which form you used and keeps it, and the project page shows the right webhook URL. Without `.htaccess`, opening the bare domain still works (it switches to `/index.php/` URLs). If `https://deploy.example.com/index.php/api/health` returns 404, your host disables PATH_INFO: upload the `.htaccess`.
 
-`.htaccess` (also produced by the build as `dist/.htaccess`):
+`.htaccess` (published on each release as `deployer.htaccess`, because GitHub renames asset names that start with a dot; the local build writes `dist/.htaccess`):
 
 ```apache
 DirectoryIndex index.php
@@ -94,6 +101,32 @@ Each webhook or button press starts a detached runner itself, so cron is not nee
 * * * * * /opt/cpanel/ea-php84/root/usr/bin/php /home/USER/deploy.example.com/index.php runner:sweep >/dev/null 2>&1
 ```
 
+## Updates
+
+The dashboard's **Updates** page shows the installed and latest version, the release notes, and an **Update** button. The CLI does the same:
+
+```bash
+php index.php self-update --check   # exit 0: up to date, 2: update available, 1: error
+php index.php self-update           # install the latest release (exit 0: updated or up to date, 1: refused/failed)
+```
+
+What an update does:
+
+1. Reads the latest release of `update_repository` from the GitHub API.
+2. Downloads `deployer.phar` and `deployer.phar.sha256` and checks the SHA-256.
+3. Opens the download as a phar (signature check, nothing is executed) and checks it reports the release version.
+4. Copies the current file to `index.php.bak`, then atomically renames the new file over `index.php` (same permissions).
+5. Database migrations run automatically on the next request or command.
+
+It refuses, leaving `index.php` untouched, when: the checksum does not match, the file is not a valid phar, `index.php` or its directory is not writable by the PHP user, it would downgrade, or the app runs from source. Runs in progress keep going on the old code; the warning in the UI tells you when some are active.
+
+| Task | How |
+|------|-----|
+| Automatic updates | cron, once a day: `0 4 * * * /opt/cpanel/ea-php84/root/usr/bin/php /home/USER/deploy.example.com/index.php self-update >/dev/null 2>&1` |
+| Roll back | `cd ~/deploy.example.com && mv index.php.bak index.php` (database migrations are not reverted, so the old version must tolerate the newer schema; check the release notes) |
+| Private fork | set `update_repository` and `update_token` (a fine-grained token with read access to the repository's contents). The token is only sent to `api.github.com` and never shown or logged. |
+| Development build (`dev`) | `self-update --force` replaces it with the latest release; the dashboard refuses. `--force` also reinstalls the same version, but never downgrades. |
+
 ## First run and password recovery
 
 - The first visitor of a fresh install creates the only admin account. Do it right after uploading.
@@ -103,7 +136,7 @@ Each webhook or button press starts a detached runner itself, so cron is not nee
 cd ~/deploy.example.com && php index.php user:password admin
 ```
 
-Other CLI commands: `about`, `migrate`, `run:trigger <project>`, `run:cancel <run>`, `runner:sweep` (run `php index.php` for the list).
+Other CLI commands: `about`, `migrate`, `run:trigger <project>`, `run:cancel <run>`, `runner:sweep`, `self-update` (run `php index.php` for the list).
 
 ## Pipeline YAML
 
@@ -175,6 +208,7 @@ The message says success, failed or cancelled, with project, duration, branch/co
 - Session cookie is `HttpOnly`, `SameSite=Lax`, `Secure` on HTTPS; 12 h idle / 7 days absolute. State-changing API calls require a CSRF token.
 - Login throttling: 5 failures per IP in 15 minutes → `429`. The IP is `REMOTE_ADDR` only. **Behind a reverse proxy or CDN** (e.g. Cloudflare) every visitor shares the proxy's IP, so one attacker's failures also lock you out for 15 minutes; `X-Forwarded-For` is deliberately ignored because it can be spoofed.
 - Telegram bot tokens are never returned by the API (masked) and are redacted from error messages.
+- Self-update only downloads over HTTPS from `api.github.com`, `github.com` and GitHub's release asset hosts (every redirect is checked), verifies the published SHA-256 and the phar signature before replacing anything, and is admin-only (session + CSRF) in the dashboard. The checksum comes from the same release, so it protects against corrupted or swapped downloads, not against a compromised GitHub account.
 - Steps run as your cPanel user with full shell access to your account: anyone with the admin password or a webhook token can run the project's pipeline. Treat both like SSH credentials.
 
 ## Known limitations
@@ -204,3 +238,12 @@ build/build.sh --skip-frontend   # reuse an existing frontend/dist
 ```
 
 `build/build-phar.php` requires a prebuilt `frontend/dist` and embeds it in the phar; `build/build.sh` builds it first.
+
+The version is stamped into the phar (`VERSION`, shown by `about` and the dashboard): `--version=1.2.3`, else `DEPLOYER_VERSION`, else the exact `vX.Y.Z` tag of `HEAD`, else `dev`.
+
+### Releasing
+
+1. Make sure `main` is green (CI runs PHPUnit on PHP 8.2 and 8.4 plus the web UI checks).
+2. Tag and push: `git tag v1.2.3 && git push origin v1.2.3`.
+3. The **Release** workflow builds the phar stamped `1.2.3` and publishes `deployer.phar`, `deployer.phar.sha256` and `deployer.htaccess` on the GitHub Release (a `-rc.N` style suffix makes it a prerelease).
+4. Installed copies pick it up from **Updates** or `self-update`.

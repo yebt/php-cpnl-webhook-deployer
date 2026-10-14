@@ -13,6 +13,8 @@ import type {
   RunStatus,
   RunSummary,
   SessionInfo,
+  UpdateResult,
+  UpdateStatus,
 } from './types'
 
 let unauthenticatedHandler: () => void = () => undefined
@@ -73,4 +75,9 @@ export const notifiersApi = {
     (await api.put<{ notifier: Notifier }>(`/api/notifiers/${id}`, input)).notifier,
   remove: (id: number) => api.del(`/api/notifiers/${id}`),
   test: (id: number) => api.post<{ sent: true }>(`/api/notifiers/${id}/test`),
+}
+
+export const updatesApi = {
+  status: () => api.get<UpdateStatus>('/api/updates'),
+  apply: () => api.post<UpdateResult>('/api/updates/apply'),
 }

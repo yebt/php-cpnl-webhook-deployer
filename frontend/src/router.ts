@@ -25,6 +25,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/notifiers', name: 'notifiers', component: () => import('./views/NotifiersView.vue') },
   { path: '/notifiers/new', name: 'notifier-new', component: () => import('./views/NotifierEditView.vue') },
   { path: '/notifiers/:id(\\d+)/edit', name: 'notifier-edit', component: () => import('./views/NotifierEditView.vue'), props: (r) => ({ id: Number(r.params.id) }) },
+  { path: '/updates', name: 'updates', component: () => import('./views/UpdatesView.vue') },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('./views/NotFoundView.vue') },
 ]
 

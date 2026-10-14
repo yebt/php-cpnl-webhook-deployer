@@ -18,6 +18,36 @@ export interface User {
 export interface SessionInfo {
   user: User
   csrf_token: string
+  /** Present on GET /api/me (not on login/setup responses). */
+  app?: { version: string }
+}
+
+export interface ReleaseInfo {
+  version: string
+  tag: string
+  name: string
+  /** GitHub release page. */
+  url: string
+  published_at: string | null
+  notes_excerpt: string
+}
+
+export interface UpdateStatus {
+  current: string
+  /** Unstamped build: updates apply only from the CLI with --force. */
+  current_is_dev: boolean
+  available: boolean
+  /** False when running from source instead of the packaged phar. */
+  can_apply: boolean
+  active_runs: number
+  latest: ReleaseInfo | null
+}
+
+export interface UpdateResult {
+  updated: boolean
+  from: string
+  to: string
+  backup_file: string | null
 }
 
 export interface Notifier {
