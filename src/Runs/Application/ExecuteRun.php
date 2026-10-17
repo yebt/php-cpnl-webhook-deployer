@@ -108,15 +108,18 @@ final class ExecuteRun
                 // Only the non-default mode is logged, to keep ordinary logs clean.
                 $this->system($run->id, $position, 'strict: false; only the exit code of the last command counts.');
             }
-            $this->system($run->id, $position, '$ ' . $step->command);
 
             $outcome = $this->executor->execute(
                 $step,
                 $project->folder,
                 fn (LogStream $stream, string $line) => $this->logs->append($run->id, $position, $stream, $line, $this->clock->now()),
+                fn (int $index) => $this->system($run->id, $position, '$ ' . ($step->commands[$index] ?? '')),
                 fn (): bool => $this->runs->isCancelRequested($run->id),
             );
             $duration = sprintf('%.2fs', $outcome->durationSeconds);
+            $where = count($step->commands) > 1
+                ? sprintf(' at command %d/%d: %s', $outcome->command + 1, count($step->commands), $this->firstLine($step->commands[$outcome->command] ?? ''))
+                : '';
 
             switch ($outcome->result) {
                 case StepOutcome::SUCCEEDED:
@@ -133,8 +136,8 @@ final class ExecuteRun
                 case StepOutcome::TIMED_OUT:
                 case StepOutcome::FAILED:
                     $message = $outcome->result === StepOutcome::TIMED_OUT
-                        ? sprintf('Step timed out after %ds; process group terminated.', $step->timeout)
-                        : sprintf('Step failed (exit code %d, %s).', (int) $outcome->exitCode, $duration);
+                        ? sprintf('Step timed out after %ds%s; process group terminated.', $step->timeout, $where)
+                        : sprintf('Step failed (exit code %d, %s)%s', (int) $outcome->exitCode, $duration, $where === '' ? '.' : $where);
                     $this->system($run->id, $position, $message);
                     $this->runs->finishStep($run->id, $position, StepStatus::Failed, $outcome->exitCode, $this->clock->now());
 
@@ -171,6 +174,13 @@ final class ExecuteRun
         $this->system($runId, null, 'Run cancelled by request.');
 
         return [RunStatus::Cancelled, null];
+    }
+
+    private function firstLine(string $command): string
+    {
+        $line = trim(strtok(trim($command), "\n") ?: '');
+
+        return mb_strlen($line) > 80 ? mb_substr($line, 0, 79) . '…' : $line;
     }
 
     private function system(int $runId, ?int $position, string $line): void

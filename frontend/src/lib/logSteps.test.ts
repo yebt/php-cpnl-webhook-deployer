@@ -31,6 +31,18 @@ describe('linesForStep', () => {
     ])
   })
 
+  it('keeps every command line of a multi-command step next to its output', () => {
+    const multi = [
+      line(0, 'Step 1/1: Deploy', 'system'),
+      line(0, '$ git pull', 'system'),
+      line(0, 'Already up to date.'),
+      line(0, '$ composer install', 'system'),
+      line(0, 'Nothing to install', 'stderr'),
+      line(0, 'Step succeeded (exit code 0, 2.00s).', 'system'),
+    ]
+    expect(linesForStep(multi, 0).map((l) => l.line)).toEqual(multi.map((l) => l.line))
+  })
+
   it('returns an empty list for a step without output yet', () => {
     expect(linesForStep(log, 5)).toEqual([])
   })

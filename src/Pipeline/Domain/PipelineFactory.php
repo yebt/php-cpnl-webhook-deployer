@@ -150,11 +150,7 @@ final class PipelineFactory
                 }
             }
 
-            $run = $step['run'] ?? null;
-            if (!is_string($run) || trim($run) === '') {
-                $errors[] = $label . ': "run" is required and must be a non-empty string.';
-                $run = null;
-            }
+            $run = $this->runCommands($step['run'] ?? null, $label, $errors);
 
             $timeout = $step['timeout'] ?? Pipeline::DEFAULT_TIMEOUT;
             if (!is_int($timeout) || $timeout <= 0) {
@@ -171,14 +167,47 @@ final class PipelineFactory
                 $errors[] = $label . ': "strict" must be a boolean.';
             }
 
-            $command = $run === null ? '' : $this->interpolate($run, $scope, $label, $errors);
+            $commands = [];
+            foreach ($run as $command) {
+                $commands[] = $this->interpolate($command, $scope, $label, $errors);
+            }
 
-            if ($validName && count($errors) === $before) {
-                $steps[] = new Step(trim($name), $command, $timeout, $continueOnError, $strict);
+            if ($validName && $commands !== [] && count($errors) === $before) {
+                $steps[] = new Step(trim($name), $commands, $timeout, $continueOnError, $strict);
             }
         }
 
         return $steps;
+    }
+
+    /**
+     * `run` is either one script (string) or a non-empty list of commands.
+     *
+     * @param list<string> $errors
+     *
+     * @return list<string> empty when invalid
+     */
+    private function runCommands(mixed $run, string $label, array &$errors): array
+    {
+        if (is_string($run) && trim($run) !== '') {
+            return [$run];
+        }
+        if (!is_array($run) || $run === [] || !array_is_list($run)) {
+            $errors[] = $label . ': "run" is required and must be a non-empty string or a non-empty list of strings.';
+
+            return [];
+        }
+
+        $valid = true;
+        foreach ($run as $index => $command) {
+            if (!is_string($command) || trim($command) === '') {
+                $errors[] = sprintf('%s: "run[%d]" must be a non-empty string.', $label, $index);
+                $valid = false;
+            }
+        }
+
+        /** @var list<string> $run */
+        return $valid ? $run : [];
     }
 
     /**

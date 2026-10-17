@@ -103,7 +103,7 @@ final class RunQueueTest extends RunsTestCase
 
         $deadRun = $enqueue($dead->id, 'test');
         $runs->claimNextQueued($dead->id, 111, new DateTimeImmutable());
-        $runs->createSteps($deadRun, [new \Deployer\Pipeline\Domain\Step('A', 'echo', 10, false), new \Deployer\Pipeline\Domain\Step('B', 'echo', 10, false)]);
+        $runs->createSteps($deadRun, [new \Deployer\Pipeline\Domain\Step('A', ['echo'], 10, false), new \Deployer\Pipeline\Domain\Step('B', ['echo'], 10, false)]);
         $runs->startStep($deadRun, 0, new DateTimeImmutable());
         $aliveRun = $enqueue($alive->id, 'test');
         $runs->claimNextQueued($alive->id, 222, new DateTimeImmutable());

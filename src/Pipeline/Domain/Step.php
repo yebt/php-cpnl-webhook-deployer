@@ -6,10 +6,16 @@ namespace Deployer\Pipeline\Domain;
 
 final class Step
 {
+    /** The commands joined with newlines, as stored with the run and shown in the API. */
+    public readonly string $command;
+
+    /**
+     * @param non-empty-list<string> $commands shell commands after `${VAR}` interpolation;
+     *                                         run in order in the same shell
+     */
     public function __construct(
         public readonly string $name,
-        /** Shell script after `${VAR}` interpolation. */
-        public readonly string $command,
+        public readonly array $commands,
         /** Seconds. */
         public readonly int $timeout,
         public readonly bool $continueOnError,
@@ -21,5 +27,6 @@ final class Step
          */
         public readonly bool $strict = true,
     ) {
+        $this->command = implode("\n", $commands);
     }
 }

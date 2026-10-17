@@ -116,6 +116,30 @@ final class YamlPipelineParserTest extends TestCase
         self::assertSame('echo $HOME $$ ${SHELL_VAR}', $pipeline->steps[0]->command);
     }
 
+    public function testRunAcceptsAListOfCommandsInterpolatedOneByOne(): void
+    {
+        $pipeline = $this->parse(<<<'YAML'
+            vars:
+              BRANCH: main
+            steps:
+              - name: Update
+                run:
+                  - git fetch origin ${BRANCH}
+                  - |
+                    if [ -d vendor ]; then
+                      echo cached
+                    fi
+                  - echo $${KEEP}
+              - name: Single
+                run: echo one
+            YAML);
+
+        self::assertSame(['git fetch origin main', "if [ -d vendor ]; then\n  echo cached\nfi\n", 'echo ${KEEP}'], $pipeline->steps[0]->commands);
+        self::assertSame("git fetch origin main\nif [ -d vendor ]; then\n  echo cached\nfi\n\necho \${KEEP}", $pipeline->steps[0]->command);
+        self::assertSame(['echo one'], $pipeline->steps[1]->commands);
+        self::assertSame('echo one', $pipeline->steps[1]->command);
+    }
+
     public function testMultipleErrorsAreCollected(): void
     {
         $errors = $this->errorsOf(<<<'YAML'
@@ -126,7 +150,7 @@ final class YamlPipelineParserTest extends TestCase
 
         self::assertSame([
             'steps[0]: "name" is required and must be a non-empty string.',
-            'steps[1] (B): "run" is required and must be a non-empty string.',
+            'steps[1] (B): "run" is required and must be a non-empty string or a non-empty list of strings.',
         ], $errors);
     }
 
@@ -142,7 +166,12 @@ final class YamlPipelineParserTest extends TestCase
         yield 'step not a mapping' => ["steps:\n  - echo hi", 'steps[0]: must be a mapping'];
         yield 'unknown top-level key' => ["stepz: []\nsteps:\n  - {name: a, run: b}", 'Unknown top-level key "stepz"'];
         yield 'unknown step key' => ["steps:\n  - {name: a, run: b, timout: 5}", 'steps[0] (a): unknown key "timout"'];
-        yield 'run not a string' => ["steps:\n  - {name: a, run: [x]}", 'steps[0] (a): "run" is required'];
+        yield 'run not a string' => ["steps:\n  - {name: a, run: 5}", 'steps[0] (a): "run" is required and must be a non-empty string or a non-empty list of strings'];
+        yield 'run empty list' => ["steps:\n  - {name: a, run: []}", 'steps[0] (a): "run" is required and must be a non-empty string or a non-empty list'];
+        yield 'run list item not a string' => ["steps:\n  - {name: a, run: [echo a, [x]]}", 'steps[0] (a): "run[1]" must be a non-empty string'];
+        yield 'run list item empty' => ["steps:\n  - {name: a, run: [echo a, '  ']}", 'steps[0] (a): "run[1]" must be a non-empty string'];
+        yield 'run mapping' => ["steps:\n  - {name: a, run: {x: y}}", 'steps[0] (a): "run" is required'];
+        yield 'unknown var in run item' => ["steps:\n  - {name: a, run: [echo a, 'echo \${NOPE}']}", 'steps[0] (a): unknown variable "NOPE"'];
         yield 'timeout zero' => ["steps:\n  - {name: a, run: b, timeout: 0}", 'steps[0] (a): "timeout" must be a positive integer'];
         yield 'timeout negative' => ["steps:\n  - {name: a, run: b, timeout: -5}", '"timeout" must be a positive integer'];
         yield 'timeout float' => ["steps:\n  - {name: a, run: b, timeout: 1.5}", '"timeout" must be a positive integer'];

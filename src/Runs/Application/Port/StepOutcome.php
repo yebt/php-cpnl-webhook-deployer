@@ -16,21 +16,23 @@ final class StepOutcome
         /** Null when the process was signalled (Symfony reports -1 after SIGKILL). */
         public readonly ?int $exitCode,
         public readonly float $durationSeconds,
+        /** 0-based index of the last command of the step that started. */
+        public readonly int $command = 0,
     ) {
     }
 
-    public static function finished(int $exitCode, float $duration): self
+    public static function finished(int $exitCode, float $duration, int $command = 0): self
     {
-        return new self($exitCode === 0 ? self::SUCCEEDED : self::FAILED, $exitCode, $duration);
+        return new self($exitCode === 0 ? self::SUCCEEDED : self::FAILED, $exitCode, $duration, $command);
     }
 
-    public static function timedOut(float $duration): self
+    public static function timedOut(float $duration, int $command = 0): self
     {
-        return new self(self::TIMED_OUT, null, $duration);
+        return new self(self::TIMED_OUT, null, $duration, $command);
     }
 
-    public static function cancelled(float $duration): self
+    public static function cancelled(float $duration, int $command = 0): self
     {
-        return new self(self::CANCELLED, null, $duration);
+        return new self(self::CANCELLED, null, $duration, $command);
     }
 }

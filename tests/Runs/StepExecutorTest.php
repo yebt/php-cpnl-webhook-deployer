@@ -21,15 +21,22 @@ final class StepExecutorTest extends TestCase
         $this->removeTempDirs();
     }
 
-    /** @return array{StepOutcome, list<string>} */
-    private function execute(string $command, int $timeout = 60, ?callable $shouldCancel = null, float $grace = 1.0, bool $strict = true): array
+    /**
+     * @param string|list<string> $commands
+     *
+     * @return array{StepOutcome, list<string>}
+     */
+    private function execute(string|array $commands, int $timeout = 60, ?callable $shouldCancel = null, float $grace = 1.0, bool $strict = true): array
     {
         $lines = [];
         $outcome = (new SymfonyProcessStepExecutor($grace))->execute(
-            new Step('Test', $command, $timeout, false, $strict),
+            new Step('Test', (array) $commands, $timeout, false, $strict),
             $this->makeTempDir(),
             static function (LogStream $stream, string $line) use (&$lines): void {
                 $lines[] = $stream->value . ': ' . $line;
+            },
+            static function (int $index) use (&$lines): void {
+                $lines[] = 'command: ' . $index;
             },
             $shouldCancel ?? static fn (): bool => false,
         );
@@ -123,7 +130,7 @@ final class StepExecutorTest extends TestCase
 
         self::assertSame(StepOutcome::FAILED, $outcome->result);
         self::assertSame(1, $outcome->exitCode);
-        self::assertSame(['stdout: before'], $lines);
+        self::assertSame(['command: 0', 'stdout: before'], $lines);
     }
 
     public function testStrictModeFailsOnAFailingCommandInsideAPipe(): void
@@ -143,7 +150,7 @@ final class StepExecutorTest extends TestCase
             SH);
 
         self::assertSame(StepOutcome::SUCCEEDED, $outcome->result, implode("\n", $lines));
-        self::assertSame(['stdout: not found', 'stdout: end'], $lines);
+        self::assertSame(['command: 0', 'stdout: not found', 'stdout: end'], $lines);
     }
 
     public function testNonStrictModeOnlyHonoursTheLastCommand(): void
@@ -151,7 +158,7 @@ final class StepExecutorTest extends TestCase
         [$outcome, $lines] = $this->execute("false\nfalse | true\necho after", strict: false);
 
         self::assertSame(StepOutcome::SUCCEEDED, $outcome->result);
-        self::assertSame(['stdout: after'], $lines);
+        self::assertSame(['command: 0', 'stdout: after'], $lines);
     }
 
     public function testStepsDoNotReadBashStartupFiles(): void
@@ -168,6 +175,44 @@ final class StepExecutorTest extends TestCase
         }
 
         self::assertSame(StepOutcome::SUCCEEDED, $outcome->result);
-        self::assertSame(['stdout: ok'], $lines);
+        self::assertSame(['command: 0', 'stdout: ok'], $lines);
+    }
+
+    public function testListItemsRunInOneShellWithEachCommandAnnouncedInOrder(): void
+    {
+        [$outcome, $lines] = $this->execute([
+            'mkdir sub && cd sub && GREETING=hi',
+            'printf "no newline"',
+            'echo "$GREETING from ${PWD##*/}"',
+        ]);
+
+        self::assertSame(StepOutcome::SUCCEEDED, $outcome->result, implode("\n", $lines));
+        self::assertSame(['command: 0', 'command: 1', 'stdout: no newline', 'command: 2', 'stdout: hi from sub'], $lines);
+        self::assertSame(2, $outcome->command);
+    }
+
+    public function testStrictModeStopsAtTheFirstFailingListItem(): void
+    {
+        [$outcome, $lines] = $this->execute(['echo one', 'false', 'echo three']);
+
+        self::assertSame(StepOutcome::FAILED, $outcome->result);
+        self::assertSame(1, $outcome->command, 'the failing item is reported');
+        self::assertSame(['command: 0', 'stdout: one', 'command: 1'], $lines);
+    }
+
+    public function testNonStrictListRunsEveryItem(): void
+    {
+        [$outcome, $lines] = $this->execute(['false', 'echo two'], strict: false);
+
+        self::assertSame(StepOutcome::SUCCEEDED, $outcome->result);
+        self::assertSame(['command: 0', 'command: 1', 'stdout: two'], $lines);
+    }
+
+    public function testOutputThatLooksLikeAMarkerIsNotTreatedAsOne(): void
+    {
+        [$outcome, $lines] = $this->execute(['printf "\\037deployer:0000:1\\037\\n"', 'echo b']);
+
+        self::assertSame(StepOutcome::SUCCEEDED, $outcome->result);
+        self::assertSame(['command: 0', "stdout: \x1Fdeployer:0000:1\x1F", 'command: 1', 'stdout: b'], $lines);
     }
 }

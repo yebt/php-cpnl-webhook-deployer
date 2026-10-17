@@ -213,6 +213,40 @@ final class ExecuteRunTest extends RunsTestCase
         self::assertContains('system: strict: false; only the exit code of the last command counts.', $lines);
     }
 
+    public function testListRunLogsEachCommandBeforeItsOutputAndNamesTheFailingItem(): void
+    {
+        $project = $this->createProject('list', <<<'YAML'
+            vars:
+              NAME: world
+            steps:
+              - name: Many
+                run:
+                  - echo "hello ${NAME}"
+                  - cd /tmp
+                  - pwd
+                  - 'false'
+                  - echo unreachable
+            YAML);
+
+        $runId = $this->runInProcess($project);
+
+        $run = $this->app->runs()->find($runId);
+        self::assertSame(RunStatus::Failed, $run->status);
+        $lines = array_values(array_filter($this->logLines($runId), static fn (string $l): bool => !str_starts_with($l, 'system: Run ')));
+        self::assertSame([
+            'system: Step 1/1: Many',
+            'system: $ echo "hello world"',
+            'stdout: hello world',
+            'system: $ cd /tmp',
+            'system: $ pwd',
+            'stdout: /tmp',
+            'system: $ false',
+        ], array_slice($lines, 0, 7));
+        self::assertMatchesRegularExpression('/^system: Step failed \(exit code 1, [\d.]+s\) at command 4\/5: false$/', $lines[7]);
+        self::assertStringContainsString('at command 4/5', (string) $run->error);
+        self::assertSame("echo \"hello world\"\ncd /tmp\npwd\nfalse\necho unreachable", $this->app->runs()->steps($runId)[0]->command);
+    }
+
     public function testRunsOfAProjectAreDrainedInFifoOrder(): void
     {
         $project = $this->createProject('fifo', "steps:\n  - {name: A, run: 'echo \${RUN_ID}'}\n");
