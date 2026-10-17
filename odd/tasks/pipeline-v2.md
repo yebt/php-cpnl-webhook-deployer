@@ -25,7 +25,7 @@ Secrets management/masking of env values beyond not printing them; per-step shel
 
 ## Tasks
 - [x] T1 — Strict mode (default on, `strict: false` opt-out) + regression test reproducing run #7 (failing `mv` followed by `echo` → step failed). Route: delegated.
-- [ ] T2 — `run` as a list (same shell, per-item log lines, strict stop). Route: delegated.
+- [x] T2 — `run` as a list (same shell, per-item log lines, strict stop). Route: delegated.
 - [ ] T3 — `env:` global + per step (validation, interpolation of vars, export to the step process, not logged). Route: delegated.
 - [ ] T4 — Notify on sweep-failed runs; README YAML reference + editor starter template updated. Route: delegated.
 
@@ -42,5 +42,14 @@ PHPUnit (unit + integration with real processes), vitest, vue-tsc, frontend buil
 - Tests added: run #7 regression, pipe failure (`false | cat`), `if !`/`|| true`/`test && ...` not failing, `strict: false` last-command semantics (executor + engine), `strict` must be boolean, startup files not read (guard; it also passed before, since non-interactive bash skips rc files).
 - `vendor/bin/phpunit`: OK (240 tests, 839 assertions).
 
+### T2 — `run` as a list (commit 1ae29a6)
+- Route: delegated (parser + executor + engine).
+- Design: `Step::$commands` (non-empty list); `Step::$command` is the items joined with newlines (stored in `run_steps.command`, API unchanged). A string `run` is a one-item list (byte-identical script, no marker).
+- Per-item logging: the items are concatenated into ONE bash script; before each item the script runs `printf '\037<nonce>:<i>\037\n'`. The nonce is 16 random hex chars per execution. The executor recognises a stdout line ending with that marker, emits any text before it as stdout (previous item's output without trailing newline), and calls `onCommand(i)`; the engine logs `$ <item>` there. Why: markers share the stdout pipe with the items' output, so command lines are exactly ordered relative to stdout without a DEBUG trap, extra fds or feeding commands through stdin (which a command reading stdin would swallow). Stderr ordering stays best effort, as for any stdout/stderr interleaving. Rejected: engine-side per-item processes (would break the same-shell requirement).
+- Failures: `StepOutcome::$command` is the last announced item; for multi-item steps the result line and run error read `Step failed (exit code N, Xs) at command i/n: <first line of item>` (timeouts get the same suffix).
+- Frontend: no change needed (lines are filtered by step position; each `$ ` line renders as `▸`); added a vitest case documenting a multi-command step.
+- RED: new parser/executor/engine tests failed (TypeError/unknown shapes, no per-item lines); GREEN after the change.
+- `vendor/bin/phpunit`: OK (251 tests, 864 assertions). `npx vitest run src/lib/logSteps.test.ts`: 8 passed.
+
 ## Next step
-T2.
+T3.
