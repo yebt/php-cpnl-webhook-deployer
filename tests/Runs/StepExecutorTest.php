@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Deployer\Tests\Runs;
 
+use Deployer\Pipeline\Domain\Step;
 use Deployer\Runs\Application\Port\StepOutcome;
 use Deployer\Runs\Domain\LogStream;
 use Deployer\Runs\Infrastructure\PosixProcessProbe;
@@ -21,13 +22,12 @@ final class StepExecutorTest extends TestCase
     }
 
     /** @return array{StepOutcome, list<string>} */
-    private function execute(string $command, int $timeout = 60, ?callable $shouldCancel = null, float $grace = 1.0): array
+    private function execute(string $command, int $timeout = 60, ?callable $shouldCancel = null, float $grace = 1.0, bool $strict = true): array
     {
         $lines = [];
         $outcome = (new SymfonyProcessStepExecutor($grace))->execute(
-            $command,
+            new Step('Test', $command, $timeout, false, $strict),
             $this->makeTempDir(),
-            $timeout,
             static function (LogStream $stream, string $line) use (&$lines): void {
                 $lines[] = $stream->value . ': ' . $line;
             },
@@ -115,5 +115,59 @@ final class StepExecutorTest extends TestCase
         self::assertSame(StepOutcome::TIMED_OUT, $outcome->result);
         self::assertLessThan(5, $outcome->durationSeconds);
         $this->assertProcessGone($this->waitForPid($pidFile));
+    }
+
+    public function testStrictModeStopsAtTheFirstFailingCommand(): void
+    {
+        [$outcome, $lines] = $this->execute("echo before\nfalse\necho after");
+
+        self::assertSame(StepOutcome::FAILED, $outcome->result);
+        self::assertSame(1, $outcome->exitCode);
+        self::assertSame(['stdout: before'], $lines);
+    }
+
+    public function testStrictModeFailsOnAFailingCommandInsideAPipe(): void
+    {
+        [$outcome] = $this->execute('false | cat');
+
+        self::assertSame(StepOutcome::FAILED, $outcome->result);
+    }
+
+    public function testStrictModeKeepsConditionsAndOrTrueWorking(): void
+    {
+        [$outcome, $lines] = $this->execute(<<<'SH'
+            if ! grep -q needle /dev/null; then echo "not found"; fi
+            false || true
+            test -f /definitely/not/here && echo never
+            echo end
+            SH);
+
+        self::assertSame(StepOutcome::SUCCEEDED, $outcome->result, implode("\n", $lines));
+        self::assertSame(['stdout: not found', 'stdout: end'], $lines);
+    }
+
+    public function testNonStrictModeOnlyHonoursTheLastCommand(): void
+    {
+        [$outcome, $lines] = $this->execute("false\nfalse | true\necho after", strict: false);
+
+        self::assertSame(StepOutcome::SUCCEEDED, $outcome->result);
+        self::assertSame(['stdout: after'], $lines);
+    }
+
+    public function testStepsDoNotReadBashStartupFiles(): void
+    {
+        $home = $this->makeTempDir();
+        file_put_contents($home . '/.bashrc', 'echo from-bashrc');
+        file_put_contents($home . '/.bash_profile', 'echo from-profile');
+        $previous = getenv('HOME');
+        putenv('HOME=' . $home);
+        try {
+            [$outcome, $lines] = $this->execute('echo ok');
+        } finally {
+            putenv($previous === false ? 'HOME' : 'HOME=' . $previous);
+        }
+
+        self::assertSame(StepOutcome::SUCCEEDED, $outcome->result);
+        self::assertSame(['stdout: ok'], $lines);
     }
 }

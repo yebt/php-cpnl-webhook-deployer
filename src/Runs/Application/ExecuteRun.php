@@ -104,12 +104,15 @@ final class ExecuteRun
 
             $this->runs->startStep($run->id, $position, $this->clock->now());
             $this->system($run->id, $position, sprintf('Step %d/%d: %s', $position + 1, $total, $step->name));
+            if (!$step->strict) {
+                // Only the non-default mode is logged, to keep ordinary logs clean.
+                $this->system($run->id, $position, 'strict: false; only the exit code of the last command counts.');
+            }
             $this->system($run->id, $position, '$ ' . $step->command);
 
             $outcome = $this->executor->execute(
-                $step->command,
+                $step,
                 $project->folder,
-                $step->timeout,
                 fn (LogStream $stream, string $line) => $this->logs->append($run->id, $position, $stream, $line, $this->clock->now()),
                 fn (): bool => $this->runs->isCancelRequested($run->id),
             );

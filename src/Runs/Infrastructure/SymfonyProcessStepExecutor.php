@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Deployer\Runs\Infrastructure;
 
+use Deployer\Pipeline\Domain\Step;
 use Deployer\Runs\Application\Port\StepExecutor;
 use Deployer\Runs\Application\Port\StepOutcome;
 use Deployer\Runs\Domain\LogStream;
@@ -12,10 +13,13 @@ use Deployer\Runs\Infrastructure\Process\Shell;
 use Symfony\Component\Process\Process;
 
 /**
- * Runs `bash -c <command>` as the leader of a new session/process group (via
+ * Runs the step script with bash as the leader of a new session/process group (via
  * setsid), so cancel and timeout can signal the whole tree: SIGTERM, a grace
  * period, then SIGKILL. Signals are sent and polled instead of using the blocking
  * Process::stop(), so output produced during the grace period is still streamed.
+ *
+ * Strict steps run as `bash --noprofile --norc -eo pipefail -c <script>` (the
+ * GitHub Actions default); non-strict steps keep plain `bash -c <script>`.
  */
 final class SymfonyProcessStepExecutor implements StepExecutor
 {
@@ -29,10 +33,14 @@ final class SymfonyProcessStepExecutor implements StepExecutor
     {
     }
 
-    public function execute(string $command, string $workingDir, int $timeoutSeconds, callable $onLine, callable $shouldCancel): StepOutcome
+    private const STRICT_BASH = 'exec bash --noprofile --norc -eo pipefail -c "$1"';
+    private const PLAIN_BASH = 'exec bash -c "$1"';
+
+    public function execute(Step $step, string $workingDir, callable $onLine, callable $shouldCancel): StepOutcome
     {
-        $script = Shell::CLOSE_INHERITED_FDS . '; exec bash -c "$1"';
-        $argv = ['bash', '-c', $script, 'deployer-step', $command];
+        $timeoutSeconds = $step->timeout;
+        $script = Shell::CLOSE_INHERITED_FDS . '; ' . ($step->strict ? self::STRICT_BASH : self::PLAIN_BASH);
+        $argv = ['bash', '-c', $script, 'deployer-step', $step->command];
         $setsid = Shell::setsid();
         if ($setsid !== '') {
             array_unshift($argv, $setsid);

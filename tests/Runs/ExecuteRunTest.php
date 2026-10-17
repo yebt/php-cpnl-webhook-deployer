@@ -159,6 +159,60 @@ final class ExecuteRunTest extends RunsTestCase
         self::assertStringNotContainsString('deployer.sqlite', $output);
     }
 
+    /**
+     * Regression for run #7: with plain `bash -c` only the last command's exit
+     * code counted, so a failing `mv` followed by `echo` was reported as success.
+     */
+    public function testStrictModeFailsTheStepAtTheFirstFailingCommand(): void
+    {
+        $project = $this->createProject('platform', <<<'YAML'
+            steps:
+              - name: Install composer
+                run: |
+                  touch composer.phar
+                  if [ -f /definitely/not/here ]; then
+                    echo "already installed"
+                  else
+                    mv composer.phar /missing/dir/composer
+                    echo "done"
+                  fi
+              - name: Next
+                run: echo next
+            YAML);
+
+        $runId = $this->runInProcess($project);
+
+        $run = $this->app->runs()->find($runId);
+        self::assertSame(RunStatus::Failed, $run->status);
+        self::assertStringContainsString('Step "Install composer" failed', (string) $run->error);
+        $steps = $this->app->runs()->steps($runId);
+        self::assertSame(StepStatus::Failed, $steps[0]->status);
+        self::assertNotSame(0, $steps[0]->exitCode);
+        self::assertSame(StepStatus::Skipped, $steps[1]->status);
+        $lines = $this->logLines($runId);
+        self::assertNotContains('stdout: done', $lines, 'the step stops at the failing mv');
+        self::assertNotContains('stdout: next', $lines);
+    }
+
+    public function testStrictFalseRestoresLastCommandSemantics(): void
+    {
+        $project = $this->createProject('lenient', <<<'YAML'
+            steps:
+              - name: Lenient
+                strict: false
+                run: |
+                  false
+                  echo "still here"
+            YAML);
+
+        $runId = $this->runInProcess($project);
+
+        self::assertSame(RunStatus::Success, $this->app->runs()->find($runId)->status);
+        $lines = $this->logLines($runId);
+        self::assertContains('stdout: still here', $lines);
+        self::assertContains('system: strict: false; only the exit code of the last command counts.', $lines);
+    }
+
     public function testRunsOfAProjectAreDrainedInFifoOrder(): void
     {
         $project = $this->createProject('fifo', "steps:\n  - {name: A, run: 'echo \${RUN_ID}'}\n");

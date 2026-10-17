@@ -17,7 +17,7 @@ namespace Deployer\Pipeline\Domain;
 final class PipelineFactory
 {
     private const TOP_LEVEL_KEYS = ['vars', 'steps'];
-    private const STEP_KEYS = ['name', 'run', 'timeout', 'continue_on_error'];
+    private const STEP_KEYS = ['name', 'run', 'timeout', 'continue_on_error', 'strict'];
     private const NAME_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/';
     private const PLACEHOLDER = '/\$?\$\{([A-Za-z_][A-Za-z0-9_]*)\}/';
 
@@ -166,10 +166,15 @@ final class PipelineFactory
                 $errors[] = $label . ': "continue_on_error" must be a boolean.';
             }
 
+            $strict = $step['strict'] ?? true;
+            if (!is_bool($strict)) {
+                $errors[] = $label . ': "strict" must be a boolean.';
+            }
+
             $command = $run === null ? '' : $this->interpolate($run, $scope, $label, $errors);
 
             if ($validName && count($errors) === $before) {
-                $steps[] = new Step(trim($name), $command, $timeout, $continueOnError);
+                $steps[] = new Step(trim($name), $command, $timeout, $continueOnError, $strict);
             }
         }
 

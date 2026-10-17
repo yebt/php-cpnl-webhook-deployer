@@ -48,6 +48,23 @@ final class YamlPipelineParserTest extends TestCase
         self::assertFalse($pipeline->steps[0]->continueOnError);
         self::assertSame(600, $pipeline->steps[1]->timeout);
         self::assertTrue($pipeline->steps[1]->continueOnError);
+        self::assertTrue($pipeline->steps[0]->strict, 'strict mode is the default');
+    }
+
+    public function testStrictCanBeDisabledPerStep(): void
+    {
+        $pipeline = $this->parse(<<<'YAML'
+            steps:
+              - name: Lenient
+                run: 'false; true'
+                strict: false
+              - name: Explicit
+                run: 'true'
+                strict: true
+            YAML);
+
+        self::assertFalse($pipeline->steps[0]->strict);
+        self::assertTrue($pipeline->steps[1]->strict);
     }
 
     public function testInterpolatesChainedVarsAndBuiltins(): void
@@ -131,6 +148,7 @@ final class YamlPipelineParserTest extends TestCase
         yield 'timeout float' => ["steps:\n  - {name: a, run: b, timeout: 1.5}", '"timeout" must be a positive integer'];
         yield 'timeout string' => ["steps:\n  - {name: a, run: b, timeout: '10'}", '"timeout" must be a positive integer'];
         yield 'continue_on_error not bool' => ["steps:\n  - {name: a, run: b, continue_on_error: 'yes'}", '"continue_on_error" must be a boolean'];
+        yield 'strict not bool' => ["steps:\n  - {name: a, run: b, strict: 'no'}", 'steps[0] (a): "strict" must be a boolean'];
         yield 'vars not a mapping' => ["vars: [a]\nsteps:\n  - {name: a, run: b}", '"vars" must be a mapping'];
         yield 'invalid var name' => ["vars:\n  bad-name: x\nsteps:\n  - {name: a, run: b}", 'vars: invalid name "bad-name"'];
         yield 'var not scalar' => ["vars:\n  A: [1]\nsteps:\n  - {name: a, run: b}", 'vars.A: value must be a scalar'];
