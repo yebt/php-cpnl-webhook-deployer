@@ -27,7 +27,7 @@ Backend run engine changes beyond the notifier thread id.
 - [x] T1 — Notifier thread id (backend + API + UI + tests). Route: delegated.
 - [x] T2 — UI fixes 2, 3, 5, 6, 8 (alignment, spinner, accent bar, icon, log header overlap). Route: delegated.
 - [x] T3 — Run view "All steps" vs focused step mode. Route: delegated.
-- [ ] T4 — Live sidebar project status. Route: delegated.
+- [x] T4 — Live sidebar project status. Route: delegated.
 
 ## Checks
 PHPUnit, vitest, vue-tsc, frontend build, phar build, headless browser screenshots of the changed screens (desktop + mobile).
@@ -59,5 +59,18 @@ PHPUnit, vitest, vue-tsc, frontend build, phar build, headless browser screensho
 - Headless: focused running step grew 25 → 33 lines while focused; Esc → URL without `step`, title "Log"; reload `?step=2` → focused "Build". Screenshots `t3-*` desktop + mobile.
 - Commit: 8c9e4aa `feat(runs): focus the run log on a single step`.
 
+### T4 — done (route: delegated writer; trigger: 2+ non-trivial files)
+- No new endpoint: the sidebar keeps using `GET /api/runs?limit=40`. New `useAdaptivePolling` composable (3s while any recent run is queued/running, 30s otherwise, paused while the tab is hidden with an immediate load on return, `refresh()` serialized with in-flight loads, scope-disposed). New `runEvents` bus: RunView emits when its log stream sees active → terminal; sidebar refreshes on it and on route change.
+- Scope note: the Projects list "Last run" badge had the same staleness; it now uses the same poller + event (same root cause, same files area). Runs triggered externally (webhook) while idle appear within ≤30s by design.
+- RED: `npx vitest run src/composables/useAdaptivePolling.test.ts` → failed (module missing). GREEN: 8 passed; full suite 41 passed; `vue-tsc` OK; build OK.
+- Headless (built phar): from /projects, sidebar showed Running 80 ms after load and flipped to Success without navigation (URL unchanged); on the run page the sidebar showed Success 4 ms after the badge. Screenshots `t4-*` desktop + mobile.
+- Commit: ba088fa `feat(ui): keep recent project statuses live`.
+
+### Final verification
+- `vendor/bin/phpunit` → OK (231 tests, 816 assertions); `php -l` over 165 PHP files → 0 errors.
+- `npx vitest run` → 6 files, 41 tests passed; `npx vue-tsc --noEmit` OK; `npm run build` OK.
+- `DEPLOYER_VERSION=0.2.0 build/build.sh --skip-frontend` → dist/deployer.phar 0.2.0 (43 web assets); `php dist/deployer.phar about` → "Deployer 0.2.0".
+- Headless Chrome against the built phar (`php -S`): new project form, notifier form with thread id (validation error + saved 42 + edit prefill), run page running, focused step, sidebar before/after finish — desktop 1440 and mobile 375.
+
 ## Next step
-T4.
+Parent: native review per RDD, then fast-forward `main`, tag `v0.2.0`, push (user decision).
