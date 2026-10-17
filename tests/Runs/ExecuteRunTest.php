@@ -247,6 +247,43 @@ final class ExecuteRunTest extends RunsTestCase
         self::assertSame("echo \"hello world\"\ncd /tmp\npwd\nfalse\necho unreachable", $this->app->runs()->steps($runId)[0]->command);
     }
 
+    public function testEnvIsExportedToStepProcessesButNeverLogged(): void
+    {
+        $project = $this->createProject('envs', <<<'YAML'
+            vars:
+              STAGE: production
+            env:
+              APP_ENV: ${STAGE}
+              SECRET_TOKEN: s3cr3t-value
+            steps:
+              - name: Read
+                run:
+                  - echo "shell sees $APP_ENV"
+                  - php -r 'echo "child sees ", getenv("APP_ENV"), " ", getenv("STEP_ONLY"), PHP_EOL;'
+                  - test -n "$PATH"
+                env:
+                  STEP_ONLY: here
+              - name: Home
+                run: echo "home is $HOME"
+                env:
+                  HOME: /custom/home
+            YAML);
+
+        $runId = $this->runInProcess($project);
+
+        $run = $this->app->runs()->find($runId);
+        self::assertSame(RunStatus::Success, $run->status, implode("\n", $this->logLines($runId)));
+        $lines = $this->logLines($runId);
+        self::assertContains('stdout: shell sees production', $lines);
+        self::assertContains('stdout: child sees production here', $lines);
+        self::assertContains('stdout: home is /custom/home', $lines, 'env overrides the base environment');
+        $all = implode("\n", $lines);
+        self::assertStringNotContainsString('s3cr3t-value', $all, 'env values are never logged');
+        foreach ($this->app->runs()->steps($runId) as $step) {
+            self::assertStringNotContainsString('s3cr3t-value', $step->command);
+        }
+    }
+
     public function testRunsOfAProjectAreDrainedInFifoOrder(): void
     {
         $project = $this->createProject('fifo', "steps:\n  - {name: A, run: 'echo \${RUN_ID}'}\n");

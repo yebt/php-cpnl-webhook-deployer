@@ -45,21 +45,22 @@ final class SymfonyProcessStepExecutor implements StepExecutor
     {
     }
 
-    private const STRICT_BASH = 'exec bash --noprofile --norc -eo pipefail -c "$1"';
-    private const PLAIN_BASH = 'exec bash -c "$1"';
+    private const STRICT_BASH = 'exec "$0" --noprofile --norc -eo pipefail -c "$1"';
+    private const PLAIN_BASH = 'exec "$0" -c "$1"';
 
     public function execute(Step $step, string $workingDir, callable $onLine, callable $onCommand, callable $shouldCancel): StepOutcome
     {
         $timeoutSeconds = $step->timeout;
         $wrapper = Shell::CLOSE_INHERITED_FDS . '; ' . ($step->strict ? self::STRICT_BASH : self::PLAIN_BASH);
         $nonce = bin2hex(random_bytes(8));
-        $argv = ['bash', '-c', $wrapper, 'deployer-step', $this->script($step->commands, $nonce)];
+        // $0 is the absolute bash, so the step's own PATH cannot hide it.
+        $argv = [Shell::bash(), '-c', $wrapper, Shell::bash(), $this->script($step->commands, $nonce)];
         $setsid = Shell::setsid();
         if ($setsid !== '') {
             array_unshift($argv, $setsid);
         }
 
-        $process = new Process($argv, $workingDir, Shell::environment(), null, null);
+        $process = new Process($argv, $workingDir, Shell::environment($step->env), null, null);
         $process->disableOutput();
 
         $marker = '/' . self::MARK . preg_quote($nonce, '/') . ':(\d+)' . self::MARK . '$/';

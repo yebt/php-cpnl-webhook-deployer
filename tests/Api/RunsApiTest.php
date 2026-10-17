@@ -48,6 +48,36 @@ final class RunsApiTest extends ApiTestCase
         self::assertNotNull($run['steps'][0]['started_at']);
     }
 
+    public function testPipelineSnapshotIsVerbatimWithoutEnv(): void
+    {
+        $yaml = "# deploy\nsteps:\n  - name: Hello\n    run: echo hi\n";
+        $project = $this->createProjectViaApi('plain', $yaml);
+        $runId = $this->runNow($project['id']);
+
+        self::assertSame($yaml, $this->json($this->call('GET', '/api/runs/' . $runId))['run']['pipeline_yaml']);
+    }
+
+    public function testPipelineSnapshotRedactsEnvValues(): void
+    {
+        $project = $this->createProjectViaApi('secret', <<<'YAML'
+            env:
+              API_TOKEN: top-secret-1
+            steps:
+              - name: Hello
+                run: echo hi
+                env:
+                  DB_PASSWORD: top-secret-2
+            YAML);
+        $runId = $this->runNow($project['id']);
+
+        $snapshot = (string) $this->json($this->call('GET', '/api/runs/' . $runId))['run']['pipeline_yaml'];
+
+        self::assertStringNotContainsString('top-secret', $snapshot);
+        self::assertStringContainsString('API_TOKEN', $snapshot);
+        self::assertStringContainsString('DB_PASSWORD', $snapshot);
+        self::assertStringContainsString('echo hi', $snapshot);
+    }
+
     public function testLogsAreReadIncrementallyByCursor(): void
     {
         $project = $this->createProjectViaApi('shop', "steps:\n  - name: Count\n    run: echo one; echo two >&2\n");

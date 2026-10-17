@@ -18,21 +18,32 @@ final class Shell
     public const CLOSE_INHERITED_FDS = 'for fd in /proc/$$/fd/*; do n=${fd##*/}; case $n in 0|1|2) ;; *) eval "exec $n>&-" 2>/dev/null ;; esac; done';
 
     private static ?string $setsid = null;
+    private static ?string $bash = null;
 
     /** Absolute path of setsid(1), or '' when unavailable. */
     public static function setsid(): string
     {
-        if (self::$setsid === null) {
-            self::$setsid = '';
-            foreach (explode(':', self::environment()['PATH']) as $dir) {
-                if ($dir !== '' && is_executable($dir . '/setsid')) {
-                    self::$setsid = $dir . '/setsid';
-                    break;
-                }
+        return self::$setsid ??= self::find('setsid');
+    }
+
+    /**
+     * Absolute path of bash, resolved from the base PATH so a step's own `PATH`
+     * (from `env:`) cannot hide the shell that runs it. Falls back to 'bash'.
+     */
+    public static function bash(): string
+    {
+        return self::$bash ??= (self::find('bash') ?: 'bash');
+    }
+
+    private static function find(string $binary): string
+    {
+        foreach (explode(':', self::environment()['PATH']) as $dir) {
+            if ($dir !== '' && is_executable($dir . '/' . $binary)) {
+                return $dir . '/' . $binary;
             }
         }
 
-        return self::$setsid;
+        return '';
     }
 
     /**

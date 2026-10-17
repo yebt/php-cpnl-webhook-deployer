@@ -140,6 +140,38 @@ final class YamlPipelineParserTest extends TestCase
         self::assertSame('echo one', $pipeline->steps[1]->command);
     }
 
+    public function testEnvIsMergedPerStepWithStepValuesWinning(): void
+    {
+        $pipeline = $this->parse(<<<'YAML'
+            vars:
+              STAGE: prod
+            env:
+              APP_ENV: ${STAGE}
+              DEBUG: false
+              WORKERS: 4
+              RATIO: 1.5
+              LITERAL: $${STAGE} and $HOME
+            steps:
+              - name: Default
+                run: echo a
+              - name: Override
+                run: echo b
+                env:
+                  APP_ENV: staging-${PROJECT}
+                  EXTRA: 'yes'
+            YAML);
+
+        $global = ['APP_ENV' => 'prod', 'DEBUG' => 'false', 'WORKERS' => '4', 'RATIO' => '1.5', 'LITERAL' => '${STAGE} and $HOME'];
+        self::assertSame($global, $pipeline->steps[0]->env);
+        self::assertSame(['APP_ENV' => 'staging-shop'] + $global + ['EXTRA' => 'yes'], $pipeline->steps[1]->env);
+        self::assertSame($global, $pipeline->env);
+    }
+
+    public function testStepsWithoutEnvHaveAnEmptyEnvironment(): void
+    {
+        self::assertSame([], $this->parse("steps:\n  - {name: a, run: b}")->steps[0]->env);
+    }
+
     public function testMultipleErrorsAreCollected(): void
     {
         $errors = $this->errorsOf(<<<'YAML'
@@ -178,6 +210,15 @@ final class YamlPipelineParserTest extends TestCase
         yield 'timeout string' => ["steps:\n  - {name: a, run: b, timeout: '10'}", '"timeout" must be a positive integer'];
         yield 'continue_on_error not bool' => ["steps:\n  - {name: a, run: b, continue_on_error: 'yes'}", '"continue_on_error" must be a boolean'];
         yield 'strict not bool' => ["steps:\n  - {name: a, run: b, strict: 'no'}", 'steps[0] (a): "strict" must be a boolean'];
+        yield 'env not a mapping' => ["env: [a]\nsteps:\n  - {name: a, run: b}", '"env" must be a mapping of NAME: value'];
+        yield 'invalid env name' => ["env:\n  bad-name: x\nsteps:\n  - {name: a, run: b}", 'env: invalid name "bad-name"'];
+        yield 'env name starting with digit' => ["env:\n  1A: x\nsteps:\n  - {name: a, run: b}", 'env: invalid name "1A"'];
+        yield 'env null value' => ["env:\n  A: ~\nsteps:\n  - {name: a, run: b}", 'env.A: value must be a scalar'];
+        yield 'env list value' => ["env:\n  A: [1]\nsteps:\n  - {name: a, run: b}", 'env.A: value must be a scalar'];
+        yield 'env unknown var' => ["env:\n  A: \${NOPE}\nsteps:\n  - {name: a, run: b}", 'env.A: unknown variable "NOPE"'];
+        yield 'step env not a mapping' => ["steps:\n  - {name: a, run: b, env: [x]}", 'steps[0] (a): "env" must be a mapping of NAME: value'];
+        yield 'step env invalid name' => ["steps:\n  - {name: a, run: b, env: {'X Y': z}}", 'steps[0] (a): env: invalid name "X Y"'];
+        yield 'step env unknown var' => ["steps:\n  - {name: a, run: b, env: {A: '\${NOPE}'}}", 'steps[0] (a): env.A: unknown variable "NOPE"'];
         yield 'vars not a mapping' => ["vars: [a]\nsteps:\n  - {name: a, run: b}", '"vars" must be a mapping'];
         yield 'invalid var name' => ["vars:\n  bad-name: x\nsteps:\n  - {name: a, run: b}", 'vars: invalid name "bad-name"'];
         yield 'var not scalar' => ["vars:\n  A: [1]\nsteps:\n  - {name: a, run: b}", 'vars.A: value must be a scalar'];

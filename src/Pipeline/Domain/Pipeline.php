@@ -12,10 +12,12 @@ final class Pipeline
     /**
      * @param list<Step>            $steps
      * @param array<string, string> $vars resolved user vars (built-ins excluded)
+     * @param array<string, string> $env  resolved top-level env (each step already merges it)
      */
     public function __construct(
         public readonly array $steps,
         public readonly array $vars,
+        public readonly array $env = [],
     ) {
     }
 }

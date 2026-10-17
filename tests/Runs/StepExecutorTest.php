@@ -22,15 +22,16 @@ final class StepExecutorTest extends TestCase
     }
 
     /**
-     * @param string|list<string> $commands
+     * @param string|list<string>  $commands
+     * @param array<string, string> $env
      *
      * @return array{StepOutcome, list<string>}
      */
-    private function execute(string|array $commands, int $timeout = 60, ?callable $shouldCancel = null, float $grace = 1.0, bool $strict = true): array
+    private function execute(string|array $commands, int $timeout = 60, ?callable $shouldCancel = null, float $grace = 1.0, bool $strict = true, array $env = []): array
     {
         $lines = [];
         $outcome = (new SymfonyProcessStepExecutor($grace))->execute(
-            new Step('Test', (array) $commands, $timeout, false, $strict),
+            new Step('Test', (array) $commands, $timeout, false, $strict, $env),
             $this->makeTempDir(),
             static function (LogStream $stream, string $line) use (&$lines): void {
                 $lines[] = $stream->value . ': ' . $line;
@@ -214,5 +215,14 @@ final class StepExecutorTest extends TestCase
 
         self::assertSame(StepOutcome::SUCCEEDED, $outcome->result);
         self::assertSame(['command: 0', "stdout: \x1Fdeployer:0000:1\x1F", 'command: 1', 'stdout: b'], $lines);
+    }
+
+    public function testAStepPathWithoutBashStillRunsTheStep(): void
+    {
+        $bin = $this->makeTempDir();
+        [$outcome, $lines] = $this->execute('echo "$PATH"', env: ['PATH' => $bin]);
+
+        self::assertSame(StepOutcome::SUCCEEDED, $outcome->result, implode("\n", $lines));
+        self::assertSame(['command: 0', 'stdout: ' . $bin], $lines);
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Deployer\Runs\Infrastructure\Http;
 
+use Deployer\Pipeline\Infrastructure\YamlEnvRedactor;
 use Deployer\Projects\Domain\Project;
 use Deployer\Projects\Domain\ProjectRepository;
 use Deployer\Runs\Application\CancelRun;
@@ -44,7 +45,8 @@ final class RunsController
                 $run = $this->load($p);
                 $data = RunPresenter::run($run, $this->projects->find($run->projectId));
                 $data['steps'] = array_map(RunPresenter::step(...), $this->runs->steps($run->id));
-                $data['pipeline_yaml'] = $run->pipelineYaml;
+                // env values may be secrets: never expose them through the API.
+                $data['pipeline_yaml'] = $run->pipelineYaml === null ? null : (new YamlEnvRedactor())->redact($run->pipelineYaml);
 
                 return Response::json(['run' => $data]);
             })

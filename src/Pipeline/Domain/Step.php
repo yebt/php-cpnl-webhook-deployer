@@ -26,6 +26,13 @@ final class Step
          * exit code counts).
          */
         public readonly bool $strict = true,
+        /**
+         * Environment variables exported to the step process (global env merged
+         * with the step's, step wins). Values are never written to the log.
+         *
+         * @var array<string, string>
+         */
+        public readonly array $env = [],
     ) {
         $this->command = implode("\n", $commands);
     }

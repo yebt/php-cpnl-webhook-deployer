@@ -13,11 +13,14 @@ namespace Deployer\Pipeline\Domain;
  *    or built-ins (no forward or self references, hence no cycles).
  *  - `$${NAME}` is an escape that yields a literal `${NAME}` for the shell.
  *  - `$NAME` without braces is left untouched for the shell.
+ *
+ * `env` (top level and per step) values are interpolated the same way, then
+ * exported verbatim: the deployer never shell-expands them.
  */
 final class PipelineFactory
 {
-    private const TOP_LEVEL_KEYS = ['vars', 'steps'];
-    private const STEP_KEYS = ['name', 'run', 'timeout', 'continue_on_error', 'strict'];
+    private const TOP_LEVEL_KEYS = ['vars', 'env', 'steps'];
+    private const STEP_KEYS = ['name', 'run', 'timeout', 'continue_on_error', 'strict', 'env'];
     private const NAME_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/';
     private const PLACEHOLDER = '/\$?\$\{([A-Za-z_][A-Za-z0-9_]*)\}/';
 
@@ -37,13 +40,14 @@ final class PipelineFactory
 
         $vars = $this->resolveVars($data['vars'] ?? [], $builtins, $errors);
         $scope = $builtins->toArray() + $vars;
-        $steps = $this->buildSteps($data, $scope, $errors);
+        $env = $this->resolveEnv($data['env'] ?? null, $scope, '', $errors);
+        $steps = $this->buildSteps($data, $scope, $env, $errors);
 
         if ($errors !== []) {
             throw new PipelineValidationError($errors);
         }
 
-        return new Pipeline($steps, $vars);
+        return new Pipeline($steps, $vars, $env);
     }
 
     /**
@@ -107,13 +111,51 @@ final class PipelineFactory
     }
 
     /**
+     * @param array<string, string> $scope
+     * @param string                $prefix label prefix for step-level env ("steps[0] (x): ")
+     * @param list<string>          $errors
+     *
+     * @return array<string, string>
+     */
+    private function resolveEnv(mixed $raw, array $scope, string $prefix, array &$errors): array
+    {
+        if ($raw === null || $raw === []) {
+            return [];
+        }
+        if (!is_array($raw) || array_is_list($raw)) {
+            $errors[] = $prefix . '"env" must be a mapping of NAME: value.';
+
+            return [];
+        }
+
+        $env = [];
+        foreach ($raw as $name => $value) {
+            $name = (string) $name;
+            $label = $prefix . 'env.' . $name;
+            if (!preg_match(self::NAME_PATTERN, $name)) {
+                $errors[] = sprintf('%senv: invalid name "%s"; use letters, digits and underscores, not starting with a digit.', $prefix, $name);
+                continue;
+            }
+            if (!is_scalar($value)) {
+                $errors[] = sprintf('%s: value must be a scalar (string, number or boolean).', $label);
+                continue;
+            }
+            $string = is_bool($value) ? ($value ? 'true' : 'false') : (string) $value;
+            $env[$name] = $this->interpolate($string, $scope, $label, $errors);
+        }
+
+        return $env;
+    }
+
+    /**
      * @param array<mixed>          $data
      * @param array<string, string> $scope
+     * @param array<string, string> $globalEnv
      * @param list<string>          $errors
      *
      * @return list<Step>
      */
-    private function buildSteps(array $data, array $scope, array &$errors): array
+    private function buildSteps(array $data, array $scope, array $globalEnv, array &$errors): array
     {
         if (!array_key_exists('steps', $data)) {
             $errors[] = '"steps" is required.';
@@ -167,13 +209,15 @@ final class PipelineFactory
                 $errors[] = $label . ': "strict" must be a boolean.';
             }
 
+            $env = array_merge($globalEnv, $this->resolveEnv($step['env'] ?? null, $scope, $label . ': ', $errors));
+
             $commands = [];
             foreach ($run as $command) {
                 $commands[] = $this->interpolate($command, $scope, $label, $errors);
             }
 
             if ($validName && $commands !== [] && count($errors) === $before) {
-                $steps[] = new Step(trim($name), $commands, $timeout, $continueOnError, $strict);
+                $steps[] = new Step(trim($name), $commands, $timeout, $continueOnError, $strict, $env);
             }
         }
 
