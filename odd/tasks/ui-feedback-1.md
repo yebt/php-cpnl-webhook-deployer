@@ -26,7 +26,7 @@ Backend run engine changes beyond the notifier thread id.
 ## Tasks
 - [x] T1 — Notifier thread id (backend + API + UI + tests). Route: delegated.
 - [x] T2 — UI fixes 2, 3, 5, 6, 8 (alignment, spinner, accent bar, icon, log header overlap). Route: delegated.
-- [ ] T3 — Run view "All steps" vs focused step mode. Route: delegated.
+- [x] T3 — Run view "All steps" vs focused step mode. Route: delegated.
 - [ ] T4 — Live sidebar project status. Route: delegated.
 
 ## Checks
@@ -51,5 +51,13 @@ PHPUnit, vitest, vue-tsc, frontend build, phar build, headless browser screensho
 - Tests: no meaningful deterministic RED for pure CSS/SVG changes (exception); checks: `npx vue-tsc --noEmit` OK, `npx vitest run` 26 passed, build OK; headless screenshots `t2-*` (form aligned, badge ring continuous at DPR3, key complete, sidebar/steps without bars, faded scrolled log).
 - Commit: e2b38b2 `fix(ui): align form rows, unify the spinner and quiet selected states`.
 
+### T3 — done (route: delegated writer; trigger: 2+ non-trivial files)
+- Pure logic in `frontend/src/lib/logSteps.ts` (`linesForStep`, `groupLinesByStep`, `parseStepQuery`, `stepQueryValue`); the runner already tags header/command/output/result lines with the 0-based step position.
+- Decisions: `?step=N` is **1-based** (matches "Step N/M"); out-of-range/malformed → all steps. URL updated with `router.replace` (no history entries). `scrollBehavior` now keeps the scroll position on query-only navigation (it used to jump to top). Clicking the selected step again does not toggle (explicit "All steps" entry in the step list, "All steps · Esc" button in the log header, Esc key).
+- Focused view: log header shows status + step name + "Step N of M", other steps dimmed (opacity .6), steps column narrows, taller log; a running focused step keeps following live output, a finished one opens at its top. Stacked (≤900px) layout scrolls the log card into view. The old "scroll to step start in the full log" behavior was replaced by the focused view.
+- RED: `npx vitest run src/lib/logSteps.test.ts` → failed (module missing). GREEN: 7 passed; full `npx vitest run` 33 passed; `vue-tsc` OK; build OK.
+- Headless: focused running step grew 25 → 33 lines while focused; Esc → URL without `step`, title "Log"; reload `?step=2` → focused "Build". Screenshots `t3-*` desktop + mobile.
+- Commit: 8c9e4aa `feat(runs): focus the run log on a single step`.
+
 ## Next step
-T3.
+T4.
