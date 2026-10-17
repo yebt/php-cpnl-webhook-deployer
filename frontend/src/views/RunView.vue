@@ -10,6 +10,7 @@ import AppIcon from '../components/ui/AppIcon.vue'
 import InlineAlert from '../components/ui/InlineAlert.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
 import StatusIcon from '../components/ui/StatusIcon.vue'
+import { emitRunFinished } from '../composables/runEvents'
 import { useBreadcrumbs } from '../composables/useBreadcrumbs'
 import { useLogStream } from '../composables/useLogStream'
 import { useNow } from '../composables/useNow'
@@ -43,6 +44,10 @@ watch(stream.polling, (polling) => {
 
 const status = computed(() => stream.status.value ?? run.data.value?.status ?? null)
 const active = computed(() => status.value !== null && isActive(status.value))
+// Tell the rest of the app (sidebar) as soon as this run is seen finishing.
+watch(stream.status, (current, previous) => {
+  if (current !== null && previous != null && isActive(previous) && !isActive(current)) emitRunFinished(props.id)
+})
 
 // View mode: all steps (default) or one focused step, kept in the URL as ?step=N (1-based).
 const route = useRoute()

@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onScopeDispose } from 'vue'
 import { useRouter } from 'vue-router'
 import { projectsApi, runsApi } from '../api'
-import type { RunSummary } from '../api/types'
+import { isActive, type RunSummary } from '../api/types'
 import AppIcon from '../components/ui/AppIcon.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import InlineAlert from '../components/ui/InlineAlert.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
+import { onRunFinished } from '../composables/runEvents'
+import { useAdaptivePolling } from '../composables/useAdaptivePolling'
 import { useBreadcrumbs } from '../composables/useBreadcrumbs'
 import { useNow } from '../composables/useNow'
 import { useResource } from '../composables/useResource'
@@ -17,7 +19,14 @@ useBreadcrumbs(() => [{ label: 'Projects' }])
 const router = useRouter()
 const now = useNow(30_000)
 const projects = useResource(() => projectsApi.list())
-const runs = useResource(() => runsApi.list({ limit: 200 }))
+const runs = useResource(() => runsApi.list({ limit: 200 }), { immediate: false })
+// "Last run" stays live like the sidebar: fast while something is queued/running.
+const polling = useAdaptivePolling(() => runs.reload(), {
+  activeMs: 3000,
+  idleMs: 30000,
+  isActive: () => (runs.data.value ?? []).some((run) => isActive(run.status)),
+})
+onScopeDispose(onRunFinished(() => polling.refresh()))
 
 const lastRun = computed(() => {
   const map = new Map<number, RunSummary>()

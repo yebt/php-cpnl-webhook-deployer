@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, onScopeDispose, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { runsApi } from '../../api'
-import type { RunSummary } from '../../api/types'
+import { isActive, type RunSummary } from '../../api/types'
+import { onRunFinished } from '../../composables/runEvents'
+import { useAdaptivePolling } from '../../composables/useAdaptivePolling'
 import { useResource } from '../../composables/useResource'
 import { useSession } from '../../session'
 import AppIcon from '../ui/AppIcon.vue'
@@ -24,7 +26,7 @@ const nav: { to: string; label: string; icon: IconName; match: RegExp }[] = [
 ]
 
 // "Recent projects" = the projects of the latest runs, newest first, with their last status.
-const recentRuns = useResource(() => runsApi.list({ limit: 40 }))
+const recentRuns = useResource(() => runsApi.list({ limit: 40 }), { immediate: false })
 const recentProjects = computed(() => {
   const seen = new Map<number, RunSummary>()
   for (const run of recentRuns.data.value ?? []) {
@@ -33,7 +35,15 @@ const recentProjects = computed(() => {
   }
   return [...seen.values()]
 })
-watch(() => route.path, () => void recentRuns.reload())
+// Live status: every 3s while a recent run is queued/running, every 30s otherwise,
+// paused in background tabs; immediate refresh on navigation and when a run finishes.
+const polling = useAdaptivePolling(() => recentRuns.reload(), {
+  activeMs: 3000,
+  idleMs: 30000,
+  isActive: () => (recentRuns.data.value ?? []).some((run) => isActive(run.status)),
+})
+watch(() => route.path, () => polling.refresh())
+onScopeDispose(onRunFinished(() => polling.refresh()))
 
 async function logout() {
   await session.logout().catch(() => undefined)
