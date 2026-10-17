@@ -9,13 +9,17 @@ const props = defineProps<{ lines: LogLine[]; live: boolean; focusStep: number |
 const scroller = ref<HTMLElement | null>(null)
 /** Follows new output until the user scrolls up; "Jump to latest" resumes. */
 const follow = ref(true)
+/** True once the log is scrolled: a top fade then separates the cut-off line from the card header. */
+const scrolled = ref(false)
 
 function atBottom(el: HTMLElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 32
 }
 
 function onScroll() {
-  if (scroller.value) follow.value = atBottom(scroller.value)
+  if (!scroller.value) return
+  follow.value = atBottom(scroller.value)
+  scrolled.value = scroller.value.scrollTop > 0
 }
 
 function scrollToBottom() {
@@ -23,6 +27,7 @@ function scrollToBottom() {
   if (!el) return
   el.scrollTop = el.scrollHeight
   follow.value = true
+  scrolled.value = el.scrollTop > 0
 }
 
 watch(
@@ -67,7 +72,7 @@ function firstOfStep(index: number): number | undefined {
 </script>
 
 <template>
-  <div class="log-wrap">
+  <div class="log-wrap" :class="{ scrolled }">
     <div
       ref="scroller"
       class="log"
@@ -99,6 +104,19 @@ function firstOfStep(index: number): number | undefined {
 
 <style scoped>
 .log-wrap { position: relative; min-height: 0; display: flex; flex: 1; }
+/* While scrolled, the topmost line fades out instead of looking clipped by the header. */
+.log-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  height: var(--space-5);
+  background: linear-gradient(var(--log-bg) 20%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.log-wrap.scrolled::before { opacity: 1; }
 .log {
   flex: 1;
   min-height: 320px;

@@ -55,7 +55,7 @@ function duration(step: RunStep): string {
   cursor: pointer;
 }
 .step:hover { background: var(--surface-hover); }
-.step.selected { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--accent); }
+.step.selected { background: var(--selected-bg); }
 .step.is-pending .name, .step.is-skipped .name { color: var(--text-faint); }
 .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .tag {

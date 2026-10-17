@@ -41,7 +41,7 @@ const folderLooksRelative = computed(() => form.folder !== '' && !form.folder.st
 
 <template>
   <form class="form-grid" novalidate @submit.prevent="emit('submit', { ...form })">
-    <div class="row">
+    <div class="form-row">
       <FormField id="name" label="Name" :error="fieldErrors.name" v-slot="{ id, invalid, describedBy }">
         <input :id="id" v-model="form.name" class="input" maxlength="100" required :aria-invalid="invalid" :aria-describedby="describedBy" />
       </FormField>
@@ -126,8 +126,3 @@ const folderLooksRelative = computed(() => form.folder !== '' && !form.folder.st
     </div>
   </form>
 </template>
-
-<style scoped>
-.row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
-@media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
-</style>

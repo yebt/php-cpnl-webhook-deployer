@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { UpdateResult, UpdateStatus } from '../../api/types'
 import AppIcon from '../ui/AppIcon.vue'
+import AppSpinner from '../ui/AppSpinner.vue'
 import InlineAlert from '../ui/InlineAlert.vue'
 
 const props = defineProps<{
@@ -73,7 +74,8 @@ const blockedReason = computed(() => {
 
       <div v-if="canUpdate && !result?.updated" class="actions">
         <button type="button" class="btn btn-primary" :disabled="applying" @click="$emit('apply')">
-          <AppIcon :name="applying ? 'spinner' : 'update'" :size="15" :class="{ spin: applying }" />
+          <AppSpinner v-if="applying" :size="15" />
+          <AppIcon v-else name="update" :size="15" />
           {{ applying ? 'Updating…' : `Update to ${latest?.version}` }}
         </button>
       </div>
@@ -103,7 +105,4 @@ const blockedReason = computed(() => {
 }
 .link { display: inline-flex; align-items: center; gap: var(--space-1); width: fit-content; }
 .actions { display: flex; gap: var(--space-2); }
-.spin { animation: spin 0.9s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 </style>

@@ -130,7 +130,7 @@ nav, .recent { display: grid; gap: 2px; }
   font-weight: 500;
 }
 .nav-item:hover { background: var(--surface-hover); color: var(--text); }
-.nav-item.active { background: var(--surface-2); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.nav-item.active { background: var(--selected-bg); color: var(--text); }
 .nav-item.small { min-height: 30px; font-weight: 400; font-size: 13px; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .footer {

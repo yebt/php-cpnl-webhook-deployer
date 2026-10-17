@@ -22,7 +22,9 @@ const errorId = `${props.id}-error`
 </template>
 
 <style scoped>
-.field { display: grid; gap: 6px; min-width: 0; }
+/* align-content: start keeps label + control at the top when a grid row stretches the field
+   (a neighbour with a hint or error is taller), so inputs in one row stay aligned. */
+.field { display: grid; gap: 6px; min-width: 0; align-content: start; }
 label { font-weight: 500; font-size: 13px; }
 .hint, .error { margin: 0; font-size: 12.5px; }
 .hint { color: var(--text-faint); }

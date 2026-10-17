@@ -13,10 +13,11 @@ export const statusLabel: Record<AnyStatus, string> = {
   skipped: 'Skipped',
 }
 
+/** Static icon per status; `running` renders AppSpinner instead (its entry is only a fallback). */
 export const statusIcon: Record<AnyStatus, IconName> = {
   queued: 'clock',
   pending: 'circle',
-  running: 'spinner',
+  running: 'circle',
   success: 'check',
   failed: 'x',
   cancelled: 'ban',

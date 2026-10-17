@@ -2,6 +2,7 @@
 import type { PropType } from 'vue'
 import type { RunStatus, StepStatus } from '../../api/types'
 import AppIcon from './AppIcon.vue'
+import AppSpinner from './AppSpinner.vue'
 import { statusIcon, statusLabel } from './status'
 
 defineProps({
@@ -11,7 +12,8 @@ defineProps({
 
 <template>
   <span class="badge" :class="`is-${status}`">
-    <AppIcon :name="statusIcon[status]" :size="12" :class="{ spin: status === 'running' }" />
+    <AppSpinner v-if="status === 'running'" :size="12" />
+    <AppIcon v-else :name="statusIcon[status]" :size="12" />
     {{ statusLabel[status] }}
   </span>
 </template>
@@ -36,7 +38,4 @@ defineProps({
 .is-failed { color: var(--danger); }
 .is-running { color: var(--info); }
 .is-queued { color: var(--warning); }
-.spin { animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 </style>
