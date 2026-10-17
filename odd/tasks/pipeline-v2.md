@@ -26,7 +26,7 @@ Secrets management/masking of env values beyond not printing them; per-step shel
 ## Tasks
 - [x] T1 — Strict mode (default on, `strict: false` opt-out) + regression test reproducing run #7 (failing `mv` followed by `echo` → step failed). Route: delegated.
 - [x] T2 — `run` as a list (same shell, per-item log lines, strict stop). Route: delegated.
-- [ ] T3 — `env:` global + per step (validation, interpolation of vars, export to the step process, not logged). Route: delegated.
+- [x] T3 — `env:` global + per step (validation, interpolation of vars, export to the step process, not logged). Route: delegated.
 - [ ] T4 — Notify on sweep-failed runs; README YAML reference + editor starter template updated. Route: delegated.
 
 ## Checks
@@ -51,5 +51,15 @@ PHPUnit (unit + integration with real processes), vitest, vue-tsc, frontend buil
 - RED: new parser/executor/engine tests failed (TypeError/unknown shapes, no per-item lines); GREEN after the change.
 - `vendor/bin/phpunit`: OK (251 tests, 864 assertions). `npx vitest run src/lib/logSteps.test.ts`: 8 passed.
 
+### T3 — `env:` (commit cdf00e7)
+- Route: delegated (parser + executor + API).
+- Design: `Pipeline::$env` (global) and `Step::$env` (global merged with step, step wins, via `array_merge`). The executor passes `Shell::environment($step->env)`, i.e. on top of the base env with PATH/HOME defaults, so `env: {HOME: ...}` overrides HOME.
+- Value rules (decided): scalars only; booleans become `"true"`/`"false"` (same as vars), numbers are stringified, `null`/lists/maps are errors (`env.X: value must be a scalar (string, number or boolean).`). `${X}` is interpolated from built-ins + vars at parse time (unknown → `env.X: unknown variable "X".`), `$${X}` yields a literal `${X}`. Values are exported verbatim — the deployer never shell-expands them (so `PATH: /opt/bin:$PATH` is literal; extend PATH with `export` inside `run`). Names follow `^[A-Za-z_][A-Za-z0-9_]*$`; step errors are prefixed with the step label.
+- Not logged: the engine only logs commands, never env values (asserted in `ExecuteRunTest`).
+- Redaction (decided, conservative): `GET /api/runs/{id}` returns `pipeline_yaml` verbatim when the snapshot has no `env`; otherwise `YamlEnvRedactor` re-dumps it with every env value replaced by `[redacted]` plus a notice comment (comments/formatting lost). The stored snapshot itself is unchanged; the live instructions editor still shows the file as written (it is the editable source).
+- Extra hardening: bash is resolved to an absolute path from the base PATH (`Shell::bash()`), so a step `PATH` without `/usr/bin` cannot hide the shell (RED observed by temporarily reverting, GREEN restored).
+- RED: parser/engine/API tests failed (unknown key `env`, values missing, snapshot leaked); GREEN after the change. A real child process (`php -r 'getenv("APP_ENV")'`) sees the value.
+- `vendor/bin/phpunit`: OK (266 tests, 895 assertions).
+
 ## Next step
-T3.
+T4.
