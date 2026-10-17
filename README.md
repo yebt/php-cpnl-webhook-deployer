@@ -1,47 +1,149 @@
+<p align="center"><img src="docs/assets/hero.png" alt="Deployer — webhook deployments for cPanel" width="100%"></p>
+
 # Deployer
 
-A self-hosted deploy runner for shared hosting. It ships as **one file** (`deployer.phar`, uploaded as `index.php`), needs no daemon, and gives you a web dashboard to run YAML-defined deploy steps from a webhook or a button, watch the logs live, cancel, and get a Telegram message when a run ends.
+Deployer is a self-hosted deploy runner for shared hosting. It ships as **one file** (`deployer.phar`, uploaded as `index.php`) and needs no daemon. You get a web dashboard where you run YAML-defined deploy steps from a webhook or a button, watch the logs live, cancel runs, and get a Telegram message when a run ends. It works under Apache + PHP-FPM (cPanel); runs are executed by a detached PHP CLI process, not by the web request.
 
-- One project = one folder on the server + a `deployer.yml` listing shell steps.
-- Runs of the same project queue up; different projects run in parallel.
-- Works under Apache + PHP-FPM (cPanel). Runs are executed by a detached PHP CLI process, not by the web request.
+- **Single-file artifact**: upload one phar, optionally one `.htaccess`. No terminal needed to install.
+- **Per-project queue, parallel projects**: runs of the same project queue up; different projects run side by side.
+- **YAML pipelines**: one `deployer.yml` per project folder, with `vars`, real `env` variables and multi-command `run` lists.
+- **Strict failure detection**: the first failing command fails the step, pipes included (GitHub Actions semantics).
+- **Live logs and focused step view**: follow the whole run, or click a step to see only its command, output and result.
+- **Cancel**: stops the whole process tree (SIGTERM, then SIGKILL).
+- **Webhooks with a token**: trigger from GitHub Actions, GitLab, Gitea or plain `curl`.
+- **Telegram notifications**: groups, channels and forum topics.
+- **Self-update** from GitHub Releases, from the dashboard, the CLI or cron.
 
-## Quick path (cPanel)
+## Contents
 
-1. Create a subdomain, e.g. `deploy.example.com` (docroot `~/deploy.example.com`).
-2. Download `deployer.phar` from the [latest release](https://github.com/yebt/php-cpnl-webhook-deployer/releases/latest) and upload it into that docroot **as `index.php`**. Optionally upload the release's `deployer.htaccess` too, renamed to `.htaccess` (clean URLs, see [URLs](#urls-with-or-without-htaccess)).
-3. Create `deployer.config.php` next to it (see [Configuration](#configuration)) and set `php_cli`.
-4. Add the cron line for `runner:sweep` (see [Cron](#cron-recovery-sweep)).
-5. Open `https://deploy.example.com/` (or `/index.php/` without `.htaccess`) and create the admin account.
-6. Create a project, write its pipeline, press **Deploy**.
+- [Quick start (cPanel)](#quick-start-cpanel)
+- [Requirements](#requirements)
+- [Configuration](#configuration)
+- [Pipeline YAML](#pipeline-yaml)
+- [Webhooks](#webhooks)
+- [Telegram notifications](#telegram-notifications)
+- [Updates](#updates)
+- [URLs: with or without `.htaccess`](#urls-with-or-without-htaccess)
+- [CLI and password recovery](#cli-and-password-recovery)
+- [Troubleshooting](#troubleshooting)
+- [Security notes](#security-notes)
+- [Known limitations](#known-limitations)
+- [Development](#development)
+- [Changelog highlights](#changelog-highlights)
 
-Later versions install themselves: **Updates** in the dashboard, or `php index.php self-update` (see [Updates](#updates)).
+## Quick start (cPanel)
 
-To verify the download first: `sha256sum -c deployer.phar.sha256` next to the downloaded `deployer.phar`.
+Everything below can be done with the cPanel **File Manager** and **Cron Jobs** pages; no terminal is required.
+
+1. **Create a subdomain**, e.g. `deploy.example.com` (docroot `~/deploy.example.com`).
+2. **Download** `deployer.phar` and `deployer.htaccess` from the [latest release](https://github.com/yebt/php-cpnl-webhook-deployer/releases/latest).
+3. **Upload** them into the docroot and rename them:
+   - `deployer.phar` → `index.php`
+   - `deployer.htaccess` → `.htaccess` (optional: clean URLs, see [URLs](#urls-with-or-without-htaccess))
+4. **Create `deployer.config.php`** next to `index.php`:
+
+   ```php
+   <?php
+   return [
+       'data_dir' => '/home/USER/deployer-data',   // outside the docroot
+       'php_cli'  => '/usr/local/bin/php',         // or /opt/cpanel/ea-php84/root/usr/bin/php
+   ];
+   ```
+
+5. **Add the recovery cron** (cPanel → Cron Jobs, every minute):
+
+   ```cron
+   * * * * * /usr/local/bin/php /home/USER/deploy.example.com/index.php runner:sweep >/dev/null 2>&1
+   ```
+
+6. **Open** `https://deploy.example.com/` (or `/index.php/` without `.htaccess`) and **create the admin account** right away: the first visitor of a fresh install becomes the only admin.
+7. **Create a project**, write its pipeline, press **Deploy**.
+
+To verify the download first: `sha256sum -c deployer.phar.sha256` next to the downloaded `deployer.phar`. Later versions install themselves (see [Updates](#updates)).
 
 ## Requirements
 
 | Need | Why | Check |
 |------|-----|-------|
 | PHP ≥ 8.2 (web and CLI) | runtime | `php -v` |
-| `proc_open` enabled | starts the runner and the steps | see below |
-| `pdo_sqlite` | storage (one SQLite file) | `php -m \| grep -i sqlite` |
-| `phar` | the artifact is a phar | `php -m \| grep -i phar` |
-| `curl` | Telegram notifications and self-update | `php -m \| grep -i curl` |
+| `proc_open` enabled | starts the runner and the steps | `check.php` below |
+| `phar` extension | the artifact is a phar | `php -m \| grep -i phar` |
+| `pdo_sqlite` extension | storage (one SQLite file) | `php -m \| grep -i sqlite` |
+| `curl` extension | Telegram notifications and self-update | `php -m \| grep -i curl` |
+| `posix`, `openssl`, `json`, `session` | process control, tokens, API, login | `php -m` |
 | `mbstring` | optional (a polyfill is bundled) | — |
+| OPcache | optional, faster requests | — |
+| `bash`, `git` | steps run in bash; most pipelines use git | `command -v bash git` |
 | `setsid` (util-linux) | cancel/timeout kill the whole process tree | `command -v setsid` |
 
-**Is `proc_open` enabled for the web?** cPanel can disable functions per PHP version (MultiPHP INI Editor → `disable_functions`). To check the web SAPI, upload a temporary file, open it, then delete it:
+### Check your host with `check.php`
+
+cPanel can disable functions per PHP version (MultiPHP INI Editor → `disable_functions`), and the web PHP and the CLI PHP are configured separately. Upload this file to the docroot as `check.php`, open `https://deploy.example.com/check.php`, then **delete it**: it reveals details about your server.
 
 ```php
-<?php var_dump(function_exists('proc_open'), ini_get('disable_functions'));
+<?php
+// Deployer requirements check. DELETE THIS FILE AFTER USE.
+header('Content-Type: text/plain');
+$ok = fn (bool $c) => $c ? 'OK     ' : 'MISSING';
+
+echo "== Web PHP ==\n";
+echo $ok(PHP_VERSION_ID >= 80200), ' PHP >= 8.2 (', PHP_VERSION, ")\n";
+foreach (['phar', 'pdo_sqlite', 'curl', 'posix', 'openssl', 'json', 'session'] as $ext) {
+    echo $ok(extension_loaded($ext)), " ext $ext\n";
+}
+foreach (['mbstring', 'Zend OPcache'] as $ext) {
+    echo extension_loaded($ext) ? 'OK     ' : 'opt.   ', " ext $ext (optional)\n";
+}
+$disabled = array_filter(array_map('trim', explode(',', (string) ini_get('disable_functions'))));
+$procOpen = function_exists('proc_open') && !in_array('proc_open', $disabled, true);
+echo $ok($procOpen), " proc_open\n";
+echo '        disable_functions: ', $disabled ? implode(', ', $disabled) : '(none)', "\n";
+if (!$procOpen) {
+    exit("\nproc_open is required; enable it in the MultiPHP INI Editor.\n");
+}
+
+function sh(string $cmd): string
+{
+    $p = proc_open(['/bin/sh', '-c', $cmd], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($p)) {
+        return '';
+    }
+    $out = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($p);
+    return trim((string) $out);
+}
+
+echo "\n== Shell tools (via proc_open) ==\n";
+foreach (['bash', 'setsid', 'git'] as $bin) {
+    $path = sh("command -v $bin");
+    echo $ok($path !== ''), " $bin ", $path, "\n";
+}
+
+echo "\n== CLI PHP candidates (for php_cli) ==\n";
+$candidates = array_merge(
+    ['/usr/local/bin/php'],
+    glob('/opt/cpanel/ea-php*/root/usr/bin/php') ?: [],
+    glob('/opt/alt/php*/usr/bin/php') ?: []
+);
+// Prints the version, then each extension ("-name" means missing).
+$probe = 'echo PHP_VERSION; foreach (["phar","pdo_sqlite","curl","posix","openssl","json","mbstring"] as $e)'
+    . ' { echo " ", extension_loaded($e) ? $e : "-$e"; }';
+foreach ($candidates as $bin) {
+    if (is_executable($bin)) {
+        echo $bin, "\n        ", sh(escapeshellarg($bin) . ' -r ' . escapeshellarg($probe)), "\n";
+    }
+}
+echo "\nPick a CLI binary with PHP >= 8.2 and phar, pdo_sqlite, curl, posix, openssl, json.\n";
+echo "Now delete check.php.\n";
 ```
 
-`bool(true)` plus a `disable_functions` list without `proc_open` means you are fine.
+All lines should read `OK`. Use one of the listed CLI binaries as `php_cli`, ideally the same PHP version as the subdomain.
 
 ## Configuration
 
-`deployer.config.php` lives next to `index.php` and returns an array. It is PHP on purpose: if requested over HTTP, Apache executes it (and the shipped `.htaccess` denies it).
+`deployer.config.php` lives next to `index.php` and returns an array. It is PHP on purpose: if requested over HTTP, Apache executes it instead of serving it (and the shipped `.htaccess` denies it).
 
 ```php
 <?php
@@ -64,83 +166,23 @@ return [
 | `update_token` | `DEPLOYER_UPDATE_TOKEN` | none (only needed for a private repository) |
 | `update_prereleases` | — | `false` (`true` also installs `vX.Y.Z-rc.N` releases) |
 
-Find the CLI path with `ls /opt/cpanel/ea-php*/root/usr/bin/php` or `which php` in the cPanel Terminal. Pick the same version as the subdomain. `php index.php about` prints the resolved data dir, database and PHP CLI.
+- **Finding `php_cli`**: run `check.php`, or in the cPanel Terminal `ls /opt/cpanel/ea-php*/root/usr/bin/php` or `which php`. Pick the same version as the subdomain.
+- **Checking the result**: `php index.php about` prints the resolved data dir, database and PHP CLI.
+- **Backups**: the data dir holds `deployer.sqlite` (projects, runs, logs, users) and lock files. Back it up; nothing else is stateful.
 
-The data dir holds `deployer.sqlite` (projects, runs, logs, users) and lock files. Back it up; nothing else is stateful.
+### Cron: recovery sweep
 
-## URLs: with or without `.htaccess`
-
-| Setup | Dashboard | Webhook |
-|-------|-----------|---------|
-| `index.php` + `.htaccess` (mod_rewrite) | `https://deploy.example.com/projects/3` | `https://deploy.example.com/hooks/<slug>` |
-| `index.php` only | `https://deploy.example.com/index.php/projects/3` | `https://deploy.example.com/index.php/hooks/<slug>` |
-
-The app detects which form you used and keeps it, and the project page shows the right webhook URL. Without `.htaccess`, opening the bare domain still works (it switches to `/index.php/` URLs). If `https://deploy.example.com/index.php/api/health` returns 404, your host disables PATH_INFO: upload the `.htaccess`.
-
-`.htaccess` (published on each release as `deployer.htaccess`, because GitHub renames asset names that start with a dot; the local build writes `dist/.htaccess`):
-
-```apache
-DirectoryIndex index.php
-<Files "deployer.config.php">
-    Require all denied
-</Files>
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^ index.php [L,E=DEPLOYER_REWRITE:1]
-</IfModule>
-```
-
-Real files (such as AutoSSL `/.well-known` challenges) are still served directly.
-
-## Cron: recovery sweep
-
-Each webhook or button press starts a detached runner itself, so cron is not needed for normal runs. The sweep recovers what a crash or a host kill leaves behind: it fails runs whose runner died and restarts runners for queues nobody is draining. Add it in cPanel → Cron Jobs, every minute:
+Each webhook or button press starts a detached runner itself, so cron is not needed for normal runs. The sweep recovers what a crash or a host kill leaves behind: it fails runs whose runner died (and notifies them like any failed run) and restarts runners for queues nobody is draining.
 
 ```cron
 * * * * * /opt/cpanel/ea-php84/root/usr/bin/php /home/USER/deploy.example.com/index.php runner:sweep >/dev/null 2>&1
 ```
 
-## Updates
-
-The dashboard's **Updates** page shows the installed and latest version, the release notes, and an **Update** button. The CLI does the same:
-
-```bash
-php index.php self-update --check   # exit 0: up to date, 2: update available, 1: error
-php index.php self-update           # install the latest release (exit 0: updated or up to date, 1: refused/failed)
-```
-
-What an update does:
-
-1. Reads the latest release of `update_repository` from the GitHub API.
-2. Downloads `deployer.phar` and `deployer.phar.sha256` and checks the SHA-256.
-3. Opens the download as a phar (signature check, nothing is executed) and checks it reports the release version.
-4. Copies the current file to `index.php.bak`, then atomically renames the new file over `index.php` (same permissions).
-5. Database migrations run automatically on the next request or command.
-
-It refuses, leaving `index.php` untouched, when: the checksum does not match, the file is not a valid phar, `index.php` or its directory is not writable by the PHP user, it would downgrade, or the app runs from source. Runs in progress keep going on the old code; the warning in the UI tells you when some are active.
-
-| Task | How |
-|------|-----|
-| Automatic updates | cron, once a day: `0 4 * * * /opt/cpanel/ea-php84/root/usr/bin/php /home/USER/deploy.example.com/index.php self-update >/dev/null 2>&1` |
-| Roll back | `cd ~/deploy.example.com && mv index.php.bak index.php` (database migrations are not reverted, so the old version must tolerate the newer schema; check the release notes) |
-| Private fork | set `update_repository` and `update_token` (a fine-grained token with read access to the repository's contents). The token is only sent to `api.github.com` and never shown or logged. |
-| Development build (`dev`) | `self-update --force` replaces it with the latest release; the dashboard refuses. `--force` also reinstalls the same version, but never downgrades. |
-
-## First run and password recovery
-
-- The first visitor of a fresh install creates the only admin account. Do it right after uploading.
-- Forgot the password? In the cPanel Terminal (it reads the password twice from STDIN, revokes all sessions, and creates the admin if missing):
-
-```bash
-cd ~/deploy.example.com && php index.php user:password admin
-```
-
-Other CLI commands: `about`, `migrate`, `run:trigger <project>`, `run:cancel <run>`, `runner:sweep`, `self-update` (run `php index.php` for the list).
-
 ## Pipeline YAML
 
-Default location: `<project folder>/deployer.yml` (configurable per project; relative paths must stay inside the folder). Edit it on disk or in the dashboard, which validates before saving (**Save anyway** stores a work in progress). The file is read when a run starts and snapshotted into the run.
+Each project has a pipeline file, by default `<project folder>/deployer.yml` (configurable per project; relative paths must stay inside the folder). Edit it on disk or in the dashboard, which validates before saving (**Save anyway** stores a work in progress). The file is read when a run starts and snapshotted into the run.
+
+### Reference example
 
 ```yaml
 vars:                            # text substituted into commands before they run
@@ -168,11 +210,13 @@ steps:
     run: echo "home is $${HOME}, env is $APP_ENV" # $${X} keeps a literal ${X} for the shell
 ```
 
+### Rules
+
 | Rule | Detail |
 |------|--------|
 | Steps | `name` and `run` required; `timeout` (integer seconds > 0), `continue_on_error`, `strict` and `env` optional. Unknown keys are errors. |
-| `run` | a script (string, `\|` blocks included) or a non-empty list of commands. List items run in order in the same shell, so `cd` and shell variables carry over; the log shows each item as its own `▸` line. |
-| Strict mode | on by default: the first failing command fails the step, including one inside a pipe. Commands in `if`/`while` conditions, `cmd \|\| true` and the left side of `a && b` do not fail the step. `strict: false` on a step restores "only the last command's exit code counts". |
+| `run` | a script (string, `\|` blocks included) or a non-empty list of commands. List items run in order in the same shell, so `cd` and shell variables carry over; the log shows each item as its own `▸` line, and a failure names the item (`at command 2/3: ...`). |
+| Strict mode | on by default (`bash --noprofile --norc -eo pipefail`): the first failing command fails the step, including one inside a pipe. Commands in `if`/`while` conditions, `cmd \|\| true` and the left side of `a && b` do not fail the step. `strict: false` on a step restores "only the last command's exit code counts". |
 | Working directory | the project folder; a missing folder fails the run before any step. |
 | Built-ins | `${PROJECT}` (slug), `${RUN_ID}`, `${PROJECT_DIR}` (folder). They cannot be redefined. |
 | Vars | strings, numbers or booleans; may reference earlier vars. An unknown `${X}` is a validation error. |
@@ -192,6 +236,19 @@ steps:
 | Use it for | paths, branch names, anything that shapes the commands | settings a program reads: `APP_ENV`, `NODE_ENV`, tokens |
 
 Env values are exported as written: the deployer does not expand `$OTHER` inside them (so `PATH: /opt/bin:$PATH` is literal). To extend `PATH`, `export PATH="/opt/bin:$PATH"` in the step's `run`. Env values are not logged, but they are stored in plain text in the project's YAML and in each run's snapshot; this is not a secrets manager.
+
+### Example: opting out of strict mode
+
+```yaml
+steps:
+  - name: Legacy script
+    strict: false                # only the last command's exit code counts
+    run: |
+      ./cleanup-old-releases.sh
+      echo "cleanup finished"
+  - name: Optional purge
+    run: rm -rf ./tmp/cache || true   # in strict mode, mark a single command as allowed to fail
+```
 
 ### Example: install composer only once
 
@@ -213,11 +270,9 @@ steps:
       fi
 ```
 
-### Behavior change in 0.3.0
+### Watching a run
 
-Steps now run in strict mode (`bash --noprofile --norc -eo pipefail`, the GitHub Actions default). Before 0.3.0 a step only failed when its **last** command failed, so a script like `mv a /missing/dir; echo done` was reported as success. After upgrading, such steps fail at the first failing command. If a step relied on ignoring errors, mark the command (`cmd || true`) or set `strict: false` on that step.
-
-Runs failed by `runner:sweep` (dead runner) now send the same notification as any other failed run.
+The run page streams the log of every step. Click a step to switch to a focused view of only that step (header, command, output, result); a running step keeps following live output. **All steps** (or `Esc`) returns to the full log. The focused step is kept in the URL (`?step=N`), so a reload or a shared link opens the same view.
 
 ## Webhooks
 
@@ -250,16 +305,94 @@ The JSON body is optional. When present, `ref`/`branch`, `after`/`commit`, `mess
 5. Dashboard → **Notifiers** → **New notifier**, then **Send test**.
 6. Pick the notifier in each project's settings.
 
-The message says success, failed or cancelled, with project, duration, branch/commit, and for failures the failing step and its last log lines. Runs failed by `runner:sweep` because their runner died are notified too. Cancelling a run that has not started yet sends nothing (you just did it).
+The message says success, failed or cancelled, with project, duration, branch/commit, and for failures the failing step and its last log lines. Runs failed by `runner:sweep` because their runner died are notified too. Cancelling a run that has not started yet sends nothing (you just did it). A failed notification never changes the run's status.
+
+## Updates
+
+| Way | How |
+|-----|-----|
+| Dashboard | **Updates** shows the installed and latest version, the release notes, and an **Update** button (admin only). |
+| CLI | `php index.php self-update --check` (exit 0: up to date, 2: update available, 1: error) |
+| | `php index.php self-update` (install the latest release; exit 0: updated or up to date, 1: refused/failed) |
+| Cron, once a day | `0 4 * * * /opt/cpanel/ea-php84/root/usr/bin/php /home/USER/deploy.example.com/index.php self-update >/dev/null 2>&1` |
+| Roll back | `cd ~/deploy.example.com && mv index.php.bak index.php` (database migrations are not reverted, so the old version must tolerate the newer schema; check the release notes) |
+| Private fork | set `update_repository` and `update_token` (a fine-grained token with read access to the repository's contents). The token is only sent to `api.github.com` and never shown or logged. |
+| Development build (`dev`) | `self-update --force` replaces it with the latest release; the dashboard refuses. `--force` also reinstalls the same version, but never downgrades. |
+
+What an update does:
+
+1. Reads the latest release of `update_repository` from the GitHub API.
+2. Downloads `deployer.phar` and `deployer.phar.sha256` and checks the SHA-256.
+3. Opens the download as a phar (signature check, nothing is executed) and checks it reports the release version.
+4. Copies the current file to `index.php.bak`, then atomically renames the new file over `index.php` (same permissions).
+5. Database migrations run automatically on the next request or command.
+
+It refuses, leaving `index.php` untouched, when the checksum does not match, the file is not a valid phar, `index.php` or its directory is not writable by the PHP user, it would downgrade, or the app runs from source. Runs in progress keep going on the old code; the warning in the UI tells you when some are active.
+
+## URLs: with or without `.htaccess`
+
+| Setup | Dashboard | Webhook |
+|-------|-----------|---------|
+| `index.php` + `.htaccess` (mod_rewrite) | `https://deploy.example.com/projects/3` | `https://deploy.example.com/hooks/<slug>` |
+| `index.php` only | `https://deploy.example.com/index.php/projects/3` | `https://deploy.example.com/index.php/hooks/<slug>` |
+
+The app detects which form you used and keeps it, and the project page shows the right webhook URL. Without `.htaccess`, opening the bare domain still works (it switches to `/index.php/` URLs). If `https://deploy.example.com/index.php/api/health` returns 404, your host disables PATH_INFO: upload the `.htaccess`.
+
+The `.htaccess` is published on each release as `deployer.htaccess`, because GitHub renames asset names that start with a dot; the local build writes `dist/.htaccess`:
+
+```apache
+DirectoryIndex index.php
+<Files "deployer.config.php">
+    Require all denied
+</Files>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L,E=DEPLOYER_REWRITE:1]
+</IfModule>
+```
+
+Real files (such as AutoSSL `/.well-known` challenges) are still served directly.
+
+## CLI and password recovery
+
+Run `php index.php` in the docroot for the command list.
+
+| Command | Purpose |
+|---------|---------|
+| `about` | version, resolved data dir, database and PHP CLI |
+| `migrate` | run database migrations (also automatic) |
+| `run:trigger <project>` | queue a run |
+| `run:cancel <run>` | cancel a run |
+| `runner:sweep` | recovery sweep (cron) |
+| `self-update` | install the latest release |
+| `user:password <name>` | reset a password |
+
+Forgot the password? In the cPanel Terminal (it reads the password twice from STDIN, revokes all sessions, and creates the admin if missing):
+
+```bash
+cd ~/deploy.example.com && php index.php user:password admin
+```
+
+## Troubleshooting
+
+| Symptom | Likely cause and fix |
+|---------|----------------------|
+| Runs stay **queued** forever | The runner cannot start. Check `php_cli` points to a working CLI binary (`php index.php about`, `check.php`) and that `proc_open` is not in `disable_functions`. Make sure the `runner:sweep` cron is set. |
+| **404** on dashboard pages or webhooks | No URL rewriting or PATH_INFO. Upload `.htaccess` (from `deployer.htaccess`), or use the `/index.php/...` form. |
+| **500** error | Read the `error_log` file in the docroot (or cPanel → Errors). Usually a PHP version below 8.2 or a missing extension. |
+| Long steps get **killed** without a timeout | The host's LVE limits (CPU, memory, process count, execution time) killed them. Lower the step's resource use or ask the provider to raise the limits. |
+| `Class "Phar" not found` | The `phar` extension is disabled. Enable it in cPanel → Select PHP Version → Extensions, or ask your provider. |
 
 ## Security notes
 
-- Webhook tokens are 256-bit random values, stored as SHA-256 and compared in constant time; header only (never in the URL, so they do not land in access logs).
-- Session cookie is `HttpOnly`, `SameSite=Lax`, `Secure` on HTTPS; 12 h idle / 7 days absolute. State-changing API calls require a CSRF token.
-- Login throttling: 5 failures per IP in 15 minutes → `429`. The IP is `REMOTE_ADDR` only. **Behind a reverse proxy or CDN** (e.g. Cloudflare) every visitor shares the proxy's IP, so one attacker's failures also lock you out for 15 minutes; `X-Forwarded-For` is deliberately ignored because it can be spoofed.
-- Telegram bot tokens are never returned by the API (masked) and are redacted from error messages.
-- Self-update only downloads over HTTPS from `api.github.com`, `github.com` and GitHub's release asset hosts (every redirect is checked), verifies the published SHA-256 and the phar signature before replacing anything, and is admin-only (session + CSRF) in the dashboard. The checksum comes from the same release, so it protects against corrupted or swapped downloads, not against a compromised GitHub account.
-- Steps run as your cPanel user with full shell access to your account: anyone with the admin password or a webhook token can run the project's pipeline. Treat both like SSH credentials.
+- **Webhook tokens** are 256-bit random values, stored as SHA-256 and compared in constant time; header only (never in the URL, so they do not land in access logs).
+- **Sessions**: the cookie is `HttpOnly`, `SameSite=Lax`, `Secure` on HTTPS; 12 h idle / 7 days absolute. State-changing API calls require a CSRF token.
+- **Login throttling**: 5 failures per IP in 15 minutes → `429`. The IP is `REMOTE_ADDR` only. **Behind a reverse proxy or CDN** (e.g. Cloudflare) every visitor shares the proxy's IP, so one attacker's failures also lock you out for 15 minutes; `X-Forwarded-For` is deliberately ignored because it can be spoofed.
+- **Telegram bot tokens** are never returned by the API (masked) and are redacted from error messages.
+- **Self-update** only downloads over HTTPS from `api.github.com`, `github.com` and GitHub's release asset hosts (every redirect is checked), verifies the published SHA-256 and the phar signature before replacing anything, and is admin-only (session + CSRF) in the dashboard. The checksum comes from the same release, so it protects against corrupted or swapped downloads, not against a compromised GitHub account.
+- **Env values** are never logged and are redacted from the run detail API, but they are stored in plain text in the YAML and run snapshots.
+- **Steps run as your cPanel user** with full shell access to your account: anyone with the admin password or a webhook token can run the project's pipeline. Treat both like SSH credentials.
 
 ## Known limitations
 
@@ -283,7 +416,7 @@ php -S 127.0.0.1:8080 -t public public/index.php   # serves the API and frontend
 Build the release artifact (needs PHP CLI with phar, composer, Node + npm):
 
 ```bash
-composer build            # = build/build.sh → dist/deployer.phar + dist/.htaccess
+composer build                   # = build/build.sh → dist/deployer.phar + dist/.htaccess
 build/build.sh --skip-frontend   # reuse an existing frontend/dist
 ```
 
@@ -297,3 +430,17 @@ The version is stamped into the phar (`VERSION`, shown by `about` and the dashbo
 2. Tag and push: `git tag v1.2.3 && git push origin v1.2.3`.
 3. The **Release** workflow builds the phar stamped `1.2.3` and publishes `deployer.phar`, `deployer.phar.sha256` and `deployer.htaccess` on the GitHub Release (a `-rc.N` style suffix makes it a prerelease).
 4. Installed copies pick it up from **Updates** or `self-update`.
+
+## Changelog highlights
+
+### 0.3.0
+
+- **Behavior change: strict mode by default.** Steps run as `bash --noprofile --norc -eo pipefail` (the GitHub Actions default). Before 0.3.0 a step only failed when its **last** command failed, so `mv a /missing/dir; echo done` was reported as success. Now such steps fail at the first failing command. If a step relied on ignoring errors, mark the command (`cmd || true`) or set `strict: false` on that step.
+- `run` accepts a list of commands, executed in one shell and logged one `▸` line each.
+- `env:` at the top level and per step exports real environment variables (never logged).
+- Runs failed by `runner:sweep` (dead runner) now send the same notification as any other failed run.
+
+### 0.2.0
+
+- Telegram notifiers accept an optional thread id for forum topics.
+- The run page has a focused single-step view (`?step=N`).
