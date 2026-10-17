@@ -25,12 +25,16 @@ final class TelegramNotifier implements Notifier
         // The bot token is part of the URL: redact it from every error we surface.
         $url = sprintf('%s/bot%s/sendMessage', self::API, $channel->botToken);
         try {
-            $response = $this->http->postJson($url, [
+            $payload = [
                 'chat_id' => $channel->chatId,
                 'text' => $html,
                 'parse_mode' => 'HTML',
                 'disable_web_page_preview' => true,
-            ], self::TIMEOUT_SECONDS);
+            ];
+            if ($channel->threadId !== null) {
+                $payload['message_thread_id'] = $channel->threadId;
+            }
+            $response = $this->http->postJson($url, $payload, self::TIMEOUT_SECONDS);
         } catch (Throwable $e) {
             throw new NotificationFailed($this->redact($e->getMessage(), $channel));
         }

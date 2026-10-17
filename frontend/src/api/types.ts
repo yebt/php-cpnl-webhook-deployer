@@ -55,6 +55,8 @@ export interface Notifier {
   name: string
   type: 'telegram'
   chat_id: string
+  /** Telegram forum topic id; null posts to the chat's general thread. */
+  thread_id: number | null
   bot_token_masked: string
 }
 
@@ -62,6 +64,8 @@ export interface NotifierInput {
   name: string
   type: 'telegram'
   chat_id: string
+  /** Positive integer (digits as a string are accepted); null or empty clears it. */
+  thread_id?: number | string | null
   /** Empty on update keeps the stored token. */
   bot_token?: string
 }

@@ -10,10 +10,18 @@ const form = reactive({
   name: props.notifier?.name ?? '',
   chat_id: props.notifier?.chat_id ?? '',
   bot_token: '',
+  thread_id: props.notifier?.thread_id != null ? String(props.notifier.thread_id) : '',
 })
 
 function submit() {
-  const input: NotifierInput = { name: form.name, type: 'telegram', chat_id: form.chat_id }
+  const thread = form.thread_id.trim()
+  const input: NotifierInput = {
+    name: form.name,
+    type: 'telegram',
+    chat_id: form.chat_id,
+    // Sent as typed: the API validates it and reports a field error.
+    thread_id: thread === '' ? null : thread,
+  }
   // On edit an empty token keeps the stored one.
   if (form.bot_token !== '' || !props.notifier) input.bot_token = form.bot_token
   emit('submit', input)
@@ -52,6 +60,23 @@ function submit() {
       v-slot="{ id, invalid, describedBy }"
     >
       <input :id="id" v-model="form.chat_id" class="input mono" spellcheck="false" required :aria-invalid="invalid" :aria-describedby="describedBy" />
+    </FormField>
+    <FormField
+      id="thread-id"
+      label="Thread ID (optional)"
+      hint="Only for groups with Topics enabled: the topic's id (the number after the last “/” in a topic message link). Empty posts to the General topic."
+      :error="fieldErrors.thread_id"
+      v-slot="{ id, invalid, describedBy }"
+    >
+      <input
+        :id="id"
+        v-model="form.thread_id"
+        class="input mono"
+        inputmode="numeric"
+        spellcheck="false"
+        :aria-invalid="invalid"
+        :aria-describedby="describedBy"
+      />
     </FormField>
     <div class="form-actions">
       <button type="button" class="btn" @click="emit('cancel')">Cancel</button>

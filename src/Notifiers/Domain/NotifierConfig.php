@@ -17,6 +17,8 @@ final class NotifierConfig
         /** Secret: never returned by the API, never logged. */
         public readonly string $botToken,
         public readonly string $chatId,
+        /** Telegram forum topic (`message_thread_id`); null posts to the chat's general thread. */
+        public readonly ?int $threadId = null,
     ) {
     }
 

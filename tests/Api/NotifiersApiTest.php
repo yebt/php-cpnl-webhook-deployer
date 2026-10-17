@@ -59,6 +59,40 @@ final class NotifiersApiTest extends ApiTestCase
         self::assertSame(self::TOKEN, $notifier?->botToken);
     }
 
+    public function testThreadIdIsOptionalAndRoundTrips(): void
+    {
+        $created = $this->call('POST', '/api/notifiers', ['name' => 'A', 'type' => 'telegram', 'bot_token' => self::TOKEN, 'chat_id' => '-100123']);
+        self::assertSame(201, $created->status, $created->body);
+        $id = $this->json($created)['notifier']['id'];
+        self::assertNull($this->json($created)['notifier']['thread_id']);
+
+        $withThread = $this->call('PUT', '/api/notifiers/' . $id, ['thread_id' => '7']);
+        self::assertSame(200, $withThread->status, $withThread->body);
+        self::assertSame(7, $this->json($withThread)['notifier']['thread_id']);
+        self::assertSame(7, $this->app->notifiers()->find($id)?->threadId);
+
+        $kept = $this->call('PUT', '/api/notifiers/' . $id, ['name' => 'B']);
+        self::assertSame(7, $this->json($kept)['notifier']['thread_id']);
+        self::assertSame('****Dsaw', $this->json($kept)['notifier']['bot_token_masked']);
+
+        $cleared = $this->call('PUT', '/api/notifiers/' . $id, ['thread_id' => '']);
+        self::assertNull($this->json($cleared)['notifier']['thread_id']);
+        self::assertNull($this->app->notifiers()->find($id)?->threadId);
+    }
+
+    public function testThreadIdMustBeAPositiveInteger(): void
+    {
+        foreach (['0', '-3', 'abc', '1.5', 12.5] as $bad) {
+            $response = $this->call('POST', '/api/notifiers', ['name' => 'A', 'type' => 'telegram', 'bot_token' => self::TOKEN, 'chat_id' => '42', 'thread_id' => $bad]);
+
+            self::assertSame(422, $response->status, var_export($bad, true));
+            self::assertSame(['thread_id'], array_keys($this->json($response)['error']['details']));
+        }
+
+        $ok = $this->call('POST', '/api/notifiers', ['name' => 'A', 'type' => 'telegram', 'bot_token' => self::TOKEN, 'chat_id' => '42', 'thread_id' => 15]);
+        self::assertSame(15, $this->json($ok)['notifier']['thread_id']);
+    }
+
     public function testDeleteDetachesProjects(): void
     {
         $id = $this->json($this->call('POST', '/api/notifiers', ['name' => 'A', 'type' => 'telegram', 'bot_token' => self::TOKEN, 'chat_id' => '42']))['notifier']['id'];

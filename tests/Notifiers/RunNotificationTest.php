@@ -84,6 +84,19 @@ final class RunNotificationTest extends ApiTestCase
         self::assertSame(404, $this->call('POST', '/api/notifiers/999/test')->status);
     }
 
+    public function testRunAndTestMessagesGoToTheConfiguredForumTopic(): void
+    {
+        $this->call('PUT', "/api/notifiers/{$this->notifierId}", ['thread_id' => 99]);
+        $project = $this->createProjectViaApi('shop', extra: ['notifier_id' => $this->notifierId]);
+
+        $this->runNow($project['id']);
+        $this->call('POST', "/api/notifiers/{$this->notifierId}/test");
+
+        self::assertCount(2, $this->http->requests);
+        self::assertSame(99, $this->http->requests[0]['body']['message_thread_id']);
+        self::assertSame(99, $this->http->requests[1]['body']['message_thread_id']);
+    }
+
     private function runNow(int $projectId): int
     {
         $runId = $this->json($this->call('POST', '/api/projects/' . $projectId . '/runs'))['run_id'];

@@ -11,7 +11,7 @@ interface NotifierRepository
     /** @return list<NotifierConfig> ordered by name */
     public function all(): array;
 
-    public function create(string $name, string $type, string $botToken, string $chatId): NotifierConfig;
+    public function create(string $name, string $type, string $botToken, string $chatId, ?int $threadId = null): NotifierConfig;
 
     public function update(NotifierConfig $notifier): void;
 

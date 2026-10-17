@@ -36,6 +36,22 @@ final class TelegramNotifierTest extends TestCase
         ], $this->http->requests[0]['body']);
     }
 
+    public function testSendsTheForumTopicThreadIdWhenConfigured(): void
+    {
+        $channel = new NotifierConfig(1, 'Ops', 'telegram', self::TOKEN, '-100123', 42);
+
+        (new TelegramNotifier($this->http))->send($channel, '<b>hi</b>');
+
+        self::assertSame(42, $this->http->requests[0]['body']['message_thread_id']);
+    }
+
+    public function testOmitsTheThreadIdWhenNotConfigured(): void
+    {
+        (new TelegramNotifier($this->http))->send($this->channel, 'x');
+
+        self::assertArrayNotHasKey('message_thread_id', $this->http->requests[0]['body']);
+    }
+
     public function testApiErrorsFailWithTheTelegramDescription(): void
     {
         $this->http->willReturn(400, '{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}');

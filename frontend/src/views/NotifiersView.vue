@@ -62,7 +62,7 @@ async function remove(notifier: Notifier) {
         <li v-for="notifier in notifiers.data.value" :key="notifier.id" class="item">
           <div class="info">
             <span class="name">{{ notifier.name }}</span>
-            <span class="faint mono detail">Telegram · chat {{ notifier.chat_id }} · token {{ notifier.bot_token_masked }}</span>
+            <span class="faint mono detail">Telegram · chat {{ notifier.chat_id }}<template v-if="notifier.thread_id"> · topic {{ notifier.thread_id }}</template> · token {{ notifier.bot_token_masked }}</span>
             <span
               v-if="results[notifier.id]"
               class="result"

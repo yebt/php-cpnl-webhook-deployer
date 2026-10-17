@@ -28,19 +28,19 @@ final class SqliteNotifierRepository implements NotifierRepository
         return array_map($this->hydrate(...), $this->pdo->query('SELECT * FROM notifiers ORDER BY name COLLATE NOCASE, id')->fetchAll());
     }
 
-    public function create(string $name, string $type, string $botToken, string $chatId): NotifierConfig
+    public function create(string $name, string $type, string $botToken, string $chatId, ?int $threadId = null): NotifierConfig
     {
         $now = gmdate('Y-m-d H:i:s');
         $this->pdo->prepare('INSERT INTO notifiers (name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-            ->execute([$name, $type, $this->config($botToken, $chatId), $now, $now]);
+            ->execute([$name, $type, $this->config($botToken, $chatId, $threadId), $now, $now]);
 
-        return new NotifierConfig((int) $this->pdo->lastInsertId(), $name, $type, $botToken, $chatId);
+        return new NotifierConfig((int) $this->pdo->lastInsertId(), $name, $type, $botToken, $chatId, $threadId);
     }
 
     public function update(NotifierConfig $notifier): void
     {
         $this->pdo->prepare('UPDATE notifiers SET name = ?, type = ?, config = ?, updated_at = ? WHERE id = ?')
-            ->execute([$notifier->name, $notifier->type, $this->config($notifier->botToken, $notifier->chatId), gmdate('Y-m-d H:i:s'), $notifier->id]);
+            ->execute([$notifier->name, $notifier->type, $this->config($notifier->botToken, $notifier->chatId, $notifier->threadId), gmdate('Y-m-d H:i:s'), $notifier->id]);
     }
 
     public function delete(int $id): void
@@ -50,9 +50,15 @@ final class SqliteNotifierRepository implements NotifierRepository
         $this->pdo->prepare('DELETE FROM notifiers WHERE id = ?')->execute([$id]);
     }
 
-    private function config(string $botToken, string $chatId): string
+    /** Type-specific settings live in the JSON `config` column, so new optional keys need no schema migration. */
+    private function config(string $botToken, string $chatId, ?int $threadId): string
     {
-        return json_encode(['bot_token' => $botToken, 'chat_id' => $chatId], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $config = ['bot_token' => $botToken, 'chat_id' => $chatId];
+        if ($threadId !== null) {
+            $config['thread_id'] = $threadId;
+        }
+
+        return json_encode($config, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
     }
 
     /** @param array<string,mixed> $row */
@@ -66,6 +72,7 @@ final class SqliteNotifierRepository implements NotifierRepository
             $row['type'],
             (string) ($config['bot_token'] ?? ''),
             (string) ($config['chat_id'] ?? ''),
+            is_int($config['thread_id'] ?? null) && $config['thread_id'] > 0 ? $config['thread_id'] : null,
         );
     }
 }

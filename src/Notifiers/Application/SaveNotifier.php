@@ -31,6 +31,7 @@ final class SaveNotifier
         $token = self::string($input, 'bot_token');
         $token = $token === '' || $token === null ? ($existing?->botToken ?? '') : $token;
         $chatId = self::string($input, 'chat_id') ?? $existing?->chatId ?? '';
+        $threadId = array_key_exists('thread_id', $input) ? self::threadId($input['thread_id']) : ($existing?->threadId);
 
         $errors = [];
         if ($name === '' || mb_strlen($name) > 100) {
@@ -45,17 +46,36 @@ final class SaveNotifier
         if (!preg_match(self::CHAT_ID_PATTERN, $chatId)) {
             $errors['chat_id'] = 'Expected a numeric chat id (e.g. -100123) or @channel_name.';
         }
+        if ($threadId === false) {
+            $errors['thread_id'] = 'Expected a positive whole number (forum topic id) or empty.';
+        }
         if ($errors !== []) {
             throw new ValidationFailed($errors);
         }
 
         if ($existing === null) {
-            return $this->notifiers->create($name, $type, $token, $chatId);
+            return $this->notifiers->create($name, $type, $token, $chatId, $threadId);
         }
-        $updated = new NotifierConfig($existing->id, $name, $type, $token, $chatId);
+        $updated = new NotifierConfig($existing->id, $name, $type, $token, $chatId, $threadId);
         $this->notifiers->update($updated);
 
         return $updated;
+    }
+
+    /** Null or empty clears the thread; false means invalid. */
+    private static function threadId(mixed $value): int|false|null
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+        if (is_int($value)) {
+            return $value > 0 ? $value : false;
+        }
+        if (is_string($value) && preg_match('/^\d{1,15}$/', trim($value)) === 1 && (int) trim($value) > 0) {
+            return (int) trim($value);
+        }
+
+        return false;
     }
 
     /** @param array<string,mixed> $input */

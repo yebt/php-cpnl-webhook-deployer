@@ -74,6 +74,7 @@ final class NotifiersController
             'name' => $notifier->name,
             'type' => $notifier->type,
             'chat_id' => $notifier->chatId,
+            'thread_id' => $notifier->threadId,
             'bot_token_masked' => $notifier->maskedBotToken(),
         ];
     }

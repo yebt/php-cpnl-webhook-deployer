@@ -197,8 +197,9 @@ The JSON body is optional. When present, `ref`/`branch`, `after`/`commit`, `mess
 1. In Telegram, talk to **@BotFather** → `/newbot` → copy the bot token (`123456789:AA…`).
 2. Add the bot to your group or channel (channels: as admin) and send it a message.
 3. Find the chat id: open `https://api.telegram.org/bot<TOKEN>/getUpdates` and read `chat.id` (groups look like `-100…`), or use `@channel_name` for public channels.
-4. Dashboard → **Notifiers** → **New notifier**, then **Send test**.
-5. Pick the notifier in each project's settings.
+4. Optional, for groups with **Topics** enabled: set **Thread ID** to the topic's id (the last number in a topic message link, or `message_thread_id` in `getUpdates`). Empty posts to the General topic.
+5. Dashboard → **Notifiers** → **New notifier**, then **Send test**.
+6. Pick the notifier in each project's settings.
 
 The message says success, failed or cancelled, with project, duration, branch/commit, and for failures the failing step and its last log lines.
 
