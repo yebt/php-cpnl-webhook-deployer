@@ -25,7 +25,7 @@ Backend run engine changes beyond the notifier thread id.
 
 ## Tasks
 - [x] T1 — Notifier thread id (backend + API + UI + tests). Route: delegated.
-- [ ] T2 — UI fixes 2, 3, 5, 6, 8 (alignment, spinner, accent bar, icon, log header overlap). Route: delegated.
+- [x] T2 — UI fixes 2, 3, 5, 6, 8 (alignment, spinner, accent bar, icon, log header overlap). Route: delegated.
 - [ ] T3 — Run view "All steps" vs focused step mode. Route: delegated.
 - [ ] T4 — Live sidebar project status. Route: delegated.
 
@@ -42,5 +42,14 @@ PHPUnit, vitest, vue-tsc, frontend build, phar build, headless browser screensho
 - GREEN: `vendor/bin/phpunit` → OK (231 tests, 816 assertions); `npx vue-tsc --noEmit` OK; `npx vitest run` 26 passed.
 - Commit: a6f77f3 `feat(notifiers): support optional Telegram forum topic thread id`.
 
+### T2 — done (route: delegated writer; trigger: 2+ non-trivial files)
+- Alignment root cause: `.field` is a grid stretched by its row; with default `align-content` the extra height of a hinted neighbour was distributed between label and input, pushing Name's input down. Fix: `.field { align-content: start }` + shared `.form-row` (`align-items: start`) in main.css (ProjectForm uses it; other forms are single-column).
+- Spinner: new `AppSpinner.vue` (16-unit viewBox, faint full track + `pathLength`-dashed arc, stroke kept ~1.75-2 device px at any size). Used by StatusBadge, StatusIcon (steps + sidebar) and UpdatePanel; the old `spinner` path icon was removed (`statusIcon.running` falls back to `circle`, never rendered).
+- Accent bars removed (sidebar active nav, selected step) → new `--selected-bg` token fill (dark #20252b / light #e6eaef), stronger than hover.
+- Key icon: the path lacked the shaft segments joining ring and teeth; replaced with a fully connected path. Icon sheet audit (all icons at 32/15 px) showed no other gaps. Global `svg { flex-shrink: 0 }` prevents clipping in flex rows.
+- Log header overlap: reproduced — when the log is scrolled (follow-to-bottom or jump to step) the topmost line is cut at the header edge. Decision: a top fade (`.log-wrap.scrolled::before`) shown only while scrolled; padding unchanged at the top. Conservative: no scroll-snap (would fight follow mode).
+- Tests: no meaningful deterministic RED for pure CSS/SVG changes (exception); checks: `npx vue-tsc --noEmit` OK, `npx vitest run` 26 passed, build OK; headless screenshots `t2-*` (form aligned, badge ring continuous at DPR3, key complete, sidebar/steps without bars, faded scrolled log).
+- Commit: e2b38b2 `fix(ui): align form rows, unify the spinner and quiet selected states`.
+
 ## Next step
-T2.
+T3.
