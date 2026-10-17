@@ -2,10 +2,11 @@
 import type { RunStep } from '../../api/types'
 import { useNow } from '../../composables/useNow'
 import { elapsedSince, formatDuration } from '../../lib/format'
+import AppIcon from '../ui/AppIcon.vue'
 import StatusIcon from '../ui/StatusIcon.vue'
 
 defineProps<{ steps: RunStep[]; selected: number | null }>()
-defineEmits<{ select: [position: number] }>()
+defineEmits<{ select: [position: number | null] }>()
 
 const now = useNow(1000)
 
@@ -17,7 +18,19 @@ function duration(step: RunStep): string {
 </script>
 
 <template>
-  <ol class="steps">
+  <ol class="steps" :class="{ focused: selected !== null }">
+    <li>
+      <button
+        type="button"
+        class="step all"
+        :class="{ selected: selected === null }"
+        :aria-pressed="selected === null"
+        @click="$emit('select', null)"
+      >
+        <AppIcon name="runs" :size="15" />
+        <span class="name">All steps</span>
+      </button>
+    </li>
     <li v-for="step in steps" :key="step.position">
       <button
         type="button"
@@ -57,6 +70,11 @@ function duration(step: RunStep): string {
 .step:hover { background: var(--surface-hover); }
 .step.selected { background: var(--selected-bg); }
 .step.is-pending .name, .step.is-skipped .name { color: var(--text-faint); }
+.all { color: var(--text-muted); }
+.all.selected { color: var(--text); }
+/* Focused view: the other steps step back so the selected one reads first. */
+.focused .step:not(.selected) { opacity: 0.6; transition: opacity 0.12s; }
+.focused .step:not(.selected):hover, .focused .step:not(.selected):focus-visible { opacity: 1; }
 .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .tag {
   margin-left: 4px;

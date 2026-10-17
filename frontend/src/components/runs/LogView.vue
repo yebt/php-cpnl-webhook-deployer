@@ -4,7 +4,18 @@ import type { LogLine } from '../../api/types'
 import { clockTime } from '../../lib/format'
 import AppIcon from '../ui/AppIcon.vue'
 
-const props = defineProps<{ lines: LogLine[]; live: boolean; focusStep: number | null }>()
+const props = withDefaults(
+  defineProps<{
+    lines: LogLine[]
+    live: boolean
+    /** Changes when the view switches (all steps / a focused step): the scroll position resets. */
+    viewKey?: string
+    /** On a view switch, follow new output from the bottom (a running step) instead of starting at the top. */
+    followOnReset?: boolean
+    emptyText?: string
+  }>(),
+  { viewKey: 'all', followOnReset: true, emptyText: undefined },
+)
 
 const scroller = ref<HTMLElement | null>(null)
 /** Follows new output until the user scrolls up; "Jump to latest" resumes. */
@@ -40,17 +51,20 @@ watch(
   { flush: 'post' },
 )
 
-// Selecting a step scrolls to its first line and pauses following.
+// Switching view starts at the top, or keeps following when that view is still producing output.
 watch(
-  () => props.focusStep,
-  async (position) => {
-    if (position === null) return
+  () => props.viewKey,
+  async () => {
     await nextTick()
-    const target = scroller.value?.querySelector<HTMLElement>(`[data-step-start="${position}"]`)
-    if (target && scroller.value) {
-      follow.value = false
-      scroller.value.scrollTop = target.offsetTop - 8
+    const el = scroller.value
+    if (!el) return
+    if (props.followOnReset) {
+      scrollToBottom()
+      return
     }
+    el.scrollTop = 0
+    follow.value = false
+    scrolled.value = false
   },
 )
 
@@ -63,12 +77,6 @@ function isStepHeader(line: LogLine): boolean {
   return line.stream === 'system' && /^Step \d+\/\d+: /.test(line.line)
 }
 
-function firstOfStep(index: number): number | undefined {
-  const line = props.lines[index]
-  if (!line || line.step === null) return undefined
-  const previous = props.lines[index - 1]
-  return previous?.step === line.step ? undefined : line.step
-}
 </script>
 
 <template>
@@ -82,13 +90,12 @@ function firstOfStep(index: number): number | undefined {
       tabindex="0"
       @scroll.passive="onScroll"
     >
-      <p v-if="lines.length === 0" class="placeholder">{{ live ? 'Waiting for output…' : 'No output was recorded.' }}</p>
+      <p v-if="lines.length === 0" class="placeholder">{{ emptyText ?? (live ? 'Waiting for output…' : 'No output was recorded.') }}</p>
       <div
-        v-for="(line, index) in lines"
+        v-for="line in lines"
         :key="line.id"
         class="line"
         :class="[`is-${line.stream}`, { command: isCommand(line), header: isStepHeader(line) }]"
-        :data-step-start="firstOfStep(index)"
       >
         <time class="ts" :datetime="line.at">{{ clockTime(line.at) }}</time>
         <span v-if="isCommand(line)" class="text"><span class="prompt" aria-hidden="true">▸</span> {{ line.line.slice(2) }}</span>
@@ -130,6 +137,7 @@ function firstOfStep(index: number): number | undefined {
   font-size: 12.5px;
   line-height: 1.6;
 }
+.log-wrap.tall .log { max-height: calc(100vh - 220px); }
 .placeholder { margin: 0; padding: 0 var(--space-4); color: #8b929b; }
 .line { display: flex; gap: var(--space-3); padding: 0 var(--space-4); }
 .line:hover { background: rgba(255, 255, 255, 0.03); }

@@ -32,7 +32,8 @@ const routes: RouteRecordRaw[] = [
 export const router = createRouter({
   history: createWebHistory(appBasePath() + '/'),
   routes,
-  scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
+  // Query-only changes (e.g. a run's ?step=N view) keep the scroll position.
+  scrollBehavior: (to, from, saved) => saved ?? (to.path === from.path ? false : { top: 0 }),
 })
 
 router.beforeEach(async (to) => {
