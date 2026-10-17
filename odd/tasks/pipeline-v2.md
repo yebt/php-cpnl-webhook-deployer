@@ -27,7 +27,7 @@ Secrets management/masking of env values beyond not printing them; per-step shel
 - [x] T1 — Strict mode (default on, `strict: false` opt-out) + regression test reproducing run #7 (failing `mv` followed by `echo` → step failed). Route: delegated.
 - [x] T2 — `run` as a list (same shell, per-item log lines, strict stop). Route: delegated.
 - [x] T3 — `env:` global + per step (validation, interpolation of vars, export to the step process, not logged). Route: delegated.
-- [ ] T4 — Notify on sweep-failed runs; README YAML reference + editor starter template updated. Route: delegated.
+- [x] T4 — Notify on sweep-failed runs; README YAML reference + editor starter template updated. Route: delegated.
 
 ## Checks
 PHPUnit (unit + integration with real processes), vitest, vue-tsc, frontend build, phar build, end-to-end through the phar with a pipeline using list + env + a failing command.
@@ -61,5 +61,20 @@ PHPUnit (unit + integration with real processes), vitest, vue-tsc, frontend buil
 - RED: parser/engine/API tests failed (unknown key `env`, values missing, snapshot leaked); GREEN after the change. A real child process (`php -r 'getenv("APP_ENV")'`) sees the value.
 - `vendor/bin/phpunit`: OK (266 tests, 895 assertions).
 
+### T4 — sweep notification + docs (commit 35cff11)
+- Route: delegated (sweep + wiring + README + editor template).
+- Design: `SweepRunners` takes an optional `RunFinishedListener`; `Application::notifyRunFinished()` builds the single `NotifyRunFinished` used by both the runner (`executeRun`) and `sweepRunners`. The notification is sent after the final status is persisted and after the project lock is released (slow delivery must not block a new runner); a throwing listener is logged as `Run-finished hook failed: ...` like the runner does, and `NotifyRunFinished` itself already logs delivery failures without throwing.
+- Other run-ending paths reviewed: `ExecuteRun` (success/failed/cancelled, internal errors) already notifies. Decision: cancelling a **queued** run (`CancelRun`, before it started) stays silent — it is always a direct user action; documented in the README.
+- Telegram API base is a hard-coded constant (`TelegramNotifier::API`), so delivery is verified through the injected fake HTTP client (`RunNotificationTest`), not a local fake endpoint.
+- RED: new sweep notification tests errored (`Application::notifyRunFinished()` missing, no request sent); GREEN after the change. Tests: sweep-failed run notified (message carries "Runner process 4242 is gone"), notification failure keeps `failed` and logs the failure, cancelling a queued run sends nothing.
+- Docs: README YAML reference (strict default + opt-out, list `run`, `env` rules, `vars` vs `env` table, composer example fixed with `mkdir -p`, "Behavior change in 0.3.0"); Telegram section notes sweep notifications and silent queued cancels. Instructions editor starter template showcases vars/env/list; its help list mentions `env`, list `run` and `strict`. Both README YAML examples and the starter template parse with the real parser (checked with a scratch script).
+
+## Final verification (after T4)
+- `vendor/bin/phpunit`: OK (269 tests, 911 assertions). `php -l` over src/tests/public/bin (165 files): 0 errors.
+- `cd frontend && npx vitest run`: 6 files, 42 tests passed; `npx vue-tsc --noEmit`: exit 0; `npm run build`: built.
+- `DEPLOYER_VERSION=0.3.0 build/build.sh --skip-frontend`: built `dist/deployer.phar` 0.3.0 (1,241.7 KiB, 43 web assets); `php dist/deployer.phar about`: `Deployer 0.3.0`.
+- E2E (phar as `www/index.php`, `php -S 127.0.0.1:8796`, curl): setup 201 → login → 2 projects. (a) global env + step env + list run + vars: `success`; log shows each item as its own `$` line before its output (`hello from sub` proves same-shell `cd`), a child `php -r getenv()` printed `child APP_ENV=production STEP_ONLY=step-value`, step 2 saw `$APP_ENV`; the secret env value appears nowhere in logs or the API run detail (snapshot redacted). (b) run #7 script: `failed`, step "Install composer" exit 1 with the `mv: cannot move` stderr, no `done`, step "Next" skipped. (c) Telegram via local fake endpoint not possible (API base not overridable); covered by `RunNotificationTest`.
+- Not done here: push, fast-forward `main`, tag `v0.3.0` (parent/user decision).
+
 ## Next step
-T4.
+Parent: review, then fast-forward `main` and tag `v0.3.0` (push from the user's machine).
