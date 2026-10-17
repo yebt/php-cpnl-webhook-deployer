@@ -143,32 +143,81 @@ Other CLI commands: `about`, `migrate`, `run:trigger <project>`, `run:cancel <ru
 Default location: `<project folder>/deployer.yml` (configurable per project; relative paths must stay inside the folder). Edit it on disk or in the dashboard, which validates before saving (**Save anyway** stores a work in progress). The file is read when a run starts and snapshotted into the run.
 
 ```yaml
-vars:
+vars:                            # text substituted into commands before they run
   APP_DIR: /home/USER/apps/shop
   BRANCH: main
   RELEASE: ${APP_DIR}/releases/${RUN_ID}   # vars may use earlier vars and built-ins
+env:                             # environment variables exported to every step
+  APP_ENV: production
+  DEPLOY_BRANCH: ${BRANCH}       # env values may use vars
 steps:
   - name: Fetch
     run: git -C ${APP_DIR} fetch origin ${BRANCH} && git -C ${APP_DIR} reset --hard origin/${BRANCH}
   - name: Install
-    run: composer install --no-dev --no-interaction --working-dir=${APP_DIR}
+    run:                         # a list runs in ONE shell, in order
+      - cd ${APP_DIR}
+      - composer install --no-dev --no-interaction
+      - php artisan migrate --force
     timeout: 600                 # seconds, default 3600
+    env:
+      COMPOSER_MEMORY_LIMIT: "-1"   # step env overrides global env
   - name: Warm cache
     run: php ${APP_DIR}/artisan optimize
     continue_on_error: true      # failure is recorded, the run goes on
   - name: Show shell vars
-    run: echo "home is $${HOME}" # $${X} keeps a literal ${X} for the shell
+    run: echo "home is $${HOME}, env is $APP_ENV" # $${X} keeps a literal ${X} for the shell
 ```
 
 | Rule | Detail |
 |------|--------|
-| Steps | `name` and `run` required; `timeout` (integer seconds > 0) and `continue_on_error` optional. Unknown keys are errors. |
+| Steps | `name` and `run` required; `timeout` (integer seconds > 0), `continue_on_error`, `strict` and `env` optional. Unknown keys are errors. |
+| `run` | a script (string, `\|` blocks included) or a non-empty list of commands. List items run in order in the same shell, so `cd` and shell variables carry over; the log shows each item as its own `▸` line. |
+| Strict mode | on by default: the first failing command fails the step, including one inside a pipe. Commands in `if`/`while` conditions, `cmd \|\| true` and the left side of `a && b` do not fail the step. `strict: false` on a step restores "only the last command's exit code counts". |
 | Working directory | the project folder; a missing folder fails the run before any step. |
 | Built-ins | `${PROJECT}` (slug), `${RUN_ID}`, `${PROJECT_DIR}` (folder). They cannot be redefined. |
 | Vars | strings, numbers or booleans; may reference earlier vars. An unknown `${X}` is a validation error. |
+| Env | names like `APP_ENV` (letters, digits, `_`; no leading digit). Values: strings, numbers or booleans (`true`/`false`); `null` is an error. Step `env` overrides top-level `env`, and both override the server's own variables (`HOME`, `PATH`, ...). |
 | Escapes | `$${X}` → literal `${X}`; `$X` without braces passes through to the shell. |
 | Timeout / cancel | the whole process group gets SIGTERM, then SIGKILL after `kill_grace_seconds`. |
 | Background processes | a step may leave `nohup` workers running; they are only killed on cancel/timeout. |
+
+### `vars` or `env`?
+
+| | `vars` | `env` |
+|---|---|---|
+| What it is | text the deployer pastes into commands before running them | real environment variables of the step process |
+| Write it as | `${NAME}` | `$NAME` (bash expands it) |
+| Seen by child programs (`php`, `composer`, `npm`) | no, only the command text | yes, via `getenv()` / `process.env` |
+| Shown in the log | yes, inside each `▸` command line | never (the run detail API also redacts them from the pipeline snapshot) |
+| Use it for | paths, branch names, anything that shapes the commands | settings a program reads: `APP_ENV`, `NODE_ENV`, tokens |
+
+Env values are exported as written: the deployer does not expand `$OTHER` inside them (so `PATH: /opt/bin:$PATH` is literal). To extend `PATH`, `export PATH="/opt/bin:$PATH"` in the step's `run`. Env values are not logged, but they are stored in plain text in the project's YAML and in each run's snapshot; this is not a secrets manager.
+
+### Example: install composer only once
+
+Strict mode makes a failing `mv` fail the step instead of being hidden by a later `echo`. Create the target directory first:
+
+```yaml
+steps:
+  - name: Install composer
+    run: |
+      if [ -x "$HOME/bin/composer" ]; then
+        echo "composer already installed"
+      else
+        php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+        php composer-setup.php --quiet
+        rm composer-setup.php
+        mkdir -p "$HOME/bin"
+        mv composer.phar "$HOME/bin/composer"
+        echo "done"
+      fi
+```
+
+### Behavior change in 0.3.0
+
+Steps now run in strict mode (`bash --noprofile --norc -eo pipefail`, the GitHub Actions default). Before 0.3.0 a step only failed when its **last** command failed, so a script like `mv a /missing/dir; echo done` was reported as success. After upgrading, such steps fail at the first failing command. If a step relied on ignoring errors, mark the command (`cmd || true`) or set `strict: false` on that step.
+
+Runs failed by `runner:sweep` (dead runner) now send the same notification as any other failed run.
 
 ## Webhooks
 
@@ -201,7 +250,7 @@ The JSON body is optional. When present, `ref`/`branch`, `after`/`commit`, `mess
 5. Dashboard → **Notifiers** → **New notifier**, then **Send test**.
 6. Pick the notifier in each project's settings.
 
-The message says success, failed or cancelled, with project, duration, branch/commit, and for failures the failing step and its last log lines.
+The message says success, failed or cancelled, with project, duration, branch/commit, and for failures the failing step and its last log lines. Runs failed by `runner:sweep` because their runner died are notified too. Cancelling a run that has not started yet sends nothing (you just did it).
 
 ## Security notes
 

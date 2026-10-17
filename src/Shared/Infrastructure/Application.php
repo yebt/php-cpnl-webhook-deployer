@@ -236,8 +236,13 @@ final class Application
             $this->logs(),
             new SymfonyProcessStepExecutor($this->config->killGraceSeconds),
             $this->clock,
-            new NotifyRunFinished($this->projects(), $this->notifiers(), $this->runs(), $this->logs(), $this->notifier(), $this->clock),
+            $this->notifyRunFinished(),
         );
+    }
+
+    public function notifyRunFinished(): NotifyRunFinished
+    {
+        return new NotifyRunFinished($this->projects(), $this->notifiers(), $this->runs(), $this->logs(), $this->notifier(), $this->clock);
     }
 
     public function drainProjectQueue(): DrainProjectQueue
@@ -260,6 +265,7 @@ final class Application
             $launcher ?? $this->runnerLauncher(),
             new PosixProcessProbe(),
             $this->clock,
+            $this->notifyRunFinished(),
         );
     }
 

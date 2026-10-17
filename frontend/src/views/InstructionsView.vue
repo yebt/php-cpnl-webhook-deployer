@@ -12,15 +12,22 @@ import { useToasts } from '../composables/useToasts'
 const props = defineProps<{ id: number }>()
 const toasts = useToasts()
 
-const STARTER = `# Pipeline steps run in order inside the project folder.
-vars:
+const STARTER = `# Steps run in order inside the project folder. A step stops at its first
+# failing command (set "strict: false" on a step to only check the last one).
+vars:                      # text replaced in commands before they run: \${NAME}
   BRANCH: main
+env:                       # environment variables for every step: $NAME
+  APP_ENV: production
 steps:
   - name: Fetch
     run: git fetch origin \${BRANCH} && git reset --hard origin/\${BRANCH}
   - name: Install
-    run: composer install --no-dev --no-interaction
+    run:                   # a list runs in one shell, one command after another
+      - composer install --no-dev --no-interaction
+      - composer dump-autoload --optimize --no-dev
     timeout: 600
+    env:
+      COMPOSER_MEMORY_LIMIT: "-1"
 `
 
 const project = useResource(() => projectsApi.get(props.id))
@@ -135,10 +142,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
       <summary>YAML reference</summary>
       <div class="card-body">
         <ul>
-          <li><code>vars</code>: map of variables; values may use <code>${NAME}</code> of earlier vars.</li>
+          <li><code>vars</code>: text replaced in commands before they run, written <code>${NAME}</code>; values may use earlier vars.</li>
+          <li><code>env</code> (top level or per step): real environment variables, read with <code>$NAME</code>; values are never logged.</li>
           <li>Built-ins: <code>${PROJECT}</code>, <code>${RUN_ID}</code>, <code>${PROJECT_DIR}</code>.</li>
           <li><code>$${NAME}</code> keeps a literal <code>${NAME}</code> for the shell.</li>
-          <li>Per step: <code>name</code>, <code>run</code>, optional <code>timeout</code> (seconds, default 3600) and <code>continue_on_error</code>.</li>
+          <li>Per step: <code>name</code>, <code>run</code> (a script or a list of commands), optional <code>timeout</code> (seconds, default 3600), <code>continue_on_error</code>, <code>strict</code> (default <code>true</code>: stop at the first failing command) and <code>env</code>.</li>
           <li>Save shortcut: <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd>. Press <kbd>Esc</kbd> then <kbd>Tab</kbd> to leave the editor.</li>
         </ul>
       </div>

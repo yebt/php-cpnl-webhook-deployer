@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 namespace Deployer\Tests\Notifiers;
 
+use DateTimeImmutable;
+use Deployer\Runs\Application\Port\ProcessProbe;
+use Deployer\Runs\Application\SweepRunners;
+use Deployer\Runs\Infrastructure\FlockProjectLock;
+use Deployer\Shared\Infrastructure\SystemClock;
 use Deployer\Tests\Support\ApiTestCase;
+use Deployer\Tests\Support\RecordingLauncher;
 
 final class RunNotificationTest extends ApiTestCase
 {
@@ -95,6 +101,72 @@ final class RunNotificationTest extends ApiTestCase
         self::assertCount(2, $this->http->requests);
         self::assertSame(99, $this->http->requests[0]['body']['message_thread_id']);
         self::assertSame(99, $this->http->requests[1]['body']['message_thread_id']);
+    }
+
+    public function testRunsFailedBySweepBecauseTheirRunnerDiedAreNotified(): void
+    {
+        $project = $this->createProjectViaApi('shop', extra: ['notifier_id' => $this->notifierId]);
+        $runId = $this->deadRunnerRun($project['id']);
+
+        $report = $this->sweep();
+
+        self::assertSame([$runId], $report['failedRuns']);
+        self::assertSame('failed', $this->json($this->call('GET', "/api/runs/{$runId}"))['run']['status']);
+        self::assertCount(1, $this->http->requests);
+        $text = $this->http->requests[0]['body']['text'];
+        self::assertStringStartsWith("\u{274C} <b>Shop</b>", $text);
+        self::assertStringContainsString('Runner process 4242 is gone', $text);
+        self::assertContains('system: Notification sent via "Ops".', $this->logLines($runId));
+    }
+
+    public function testSweepNotificationFailureNeverChangesTheRunStatus(): void
+    {
+        $project = $this->createProjectViaApi('shop', extra: ['notifier_id' => $this->notifierId]);
+        $runId = $this->deadRunnerRun($project['id']);
+        $this->http->willFail('Connection refused');
+
+        $this->sweep();
+
+        self::assertSame('failed', $this->json($this->call('GET', "/api/runs/{$runId}"))['run']['status']);
+        self::assertNotEmpty(array_filter($this->logLines($runId), static fn (string $l): bool => str_contains($l, 'Notification via "Ops" failed: Connection refused')));
+    }
+
+    public function testCancellingAQueuedRunSendsNothing(): void
+    {
+        $project = $this->createProjectViaApi('shop', extra: ['notifier_id' => $this->notifierId]);
+        $runId = $this->json($this->call('POST', '/api/projects/' . $project['id'] . '/runs'))['run_id'];
+
+        self::assertSame(200, $this->call('POST', "/api/runs/{$runId}/cancel")->status);
+        self::assertSame([], $this->http->requests);
+    }
+
+    private function deadRunnerRun(int $projectId): int
+    {
+        $runId = $this->json($this->call('POST', '/api/projects/' . $projectId . '/runs'))['run_id'];
+        $this->app->runs()->claimNextQueued($projectId, 4242, new DateTimeImmutable());
+
+        return $runId;
+    }
+
+    /** @return array{failedRuns: list<int>, launchedProjects: list<int>} */
+    private function sweep(): array
+    {
+        $deadProbe = new class () implements ProcessProbe {
+            public function isAlive(int $pid): bool
+            {
+                return false;
+            }
+        };
+
+        return (new SweepRunners(
+            $this->app->runs(),
+            $this->app->logs(),
+            new FlockProjectLock($this->app->config()->locksDir()),
+            new RecordingLauncher(),
+            $deadProbe,
+            new SystemClock(),
+            $this->app->notifyRunFinished(),
+        ))();
     }
 
     private function runNow(int $projectId): int
