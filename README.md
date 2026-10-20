@@ -8,9 +8,9 @@ Deployer is a self-hosted deploy runner for shared hosting. It ships as **one fi
 - **Per-project queue, parallel projects**: runs of the same project queue up; different projects run side by side.
 - **YAML pipelines**: one `deployer.yml` per project folder, with `vars`, real `env` variables and multi-command `run` lists.
 - **Strict failure detection**: the first failing command fails the step, pipes included (GitHub Actions semantics).
-- **Live logs and focused step view**: follow the whole run, or click a step to see only its command, output and result.
-- **Cancel**: stops the whole process tree (SIGTERM, then SIGKILL).
-- **Webhooks with a token**: trigger from GitHub Actions, GitLab, Gitea or plain `curl`.
+- **Live logs and focused step view**: follow the whole run, or click a step to see only its command, output and result. Commands are highlighted as bash, and **Copy** puts the visible log on the clipboard.
+- **Cancel and retry**: cancel stops the whole process tree (SIGTERM, then SIGKILL); a failed or cancelled run can be retried in one click.
+- **Webhooks with a token**: trigger from GitHub Actions, GitLab, Gitea or plain `curl`; revoke the token at any time.
 - **Telegram notifications**: groups, channels and forum topics.
 - **Self-update** from GitHub Releases, from the dashboard, the CLI or cron.
 
@@ -274,10 +274,19 @@ steps:
 
 The run page streams the log of every step. Click a step to switch to a focused view of only that step (header, command, output, result); a running step keeps following live output. **All steps** (or `Esc`) returns to the full log. The focused step is kept in the URL (`?step=N`), so a reload or a shared link opens the same view.
 
+Executed commands (the `▸` lines) are syntax-highlighted as bash: keywords, the command name, strings, variables, operators, flags, numbers and comments each get their own colour.
+
+| Action | What it does |
+|--------|--------------|
+| **Copy** (log header) | Copies exactly what the log shows — all steps, or only the focused step — as plain text, even while the run is live. Each line reads `HH:MM:SS  text`; stderr lines are marked `[stderr]` and commands start with `$ `. On plain HTTP, where the browser blocks the Clipboard API, a fallback copy is used. |
+| **Retry** (failed or cancelled runs) | Queues a new run of the same project and opens it. The new run has trigger `retry`, shows **Retry of #N**, and uses the project's **current** instructions file (like **Deploy**), so a pipeline you fixed after the failure is picked up. API: `POST /api/runs/{id}/retry` → `202 {"run_id": …}`; `409` if the run did not fail or was not cancelled. |
+
 ## Webhooks
 
 1. Open the project → **Webhook** → **Generate token**. Copy it immediately: it is shown once and only its hash is stored. **Regenerate** invalidates the old token at once.
 2. `POST` to the webhook URL with the token in the `X-Deployer-Token` header. Any valid call queues a run (`202`); a wrong token or unknown project gets `401` and creates nothing.
+
+Each project has at most one token. The **Webhook** card shows whether it is active and when it was generated (tokens created before 0.4.0 show just "Active"). **Revoke token** deletes it: every webhook call gets `401` until you generate a new one. Deploys from the dashboard keep working. API: `DELETE /api/projects/{id}/token` → `204`.
 
 ```bash
 curl -fsS -X POST "https://deploy.example.com/hooks/shop" -H "X-Deployer-Token: $DEPLOYER_TOKEN"
@@ -432,6 +441,15 @@ The version is stamped into the phar (`VERSION`, shown by `about` and the dashbo
 4. Installed copies pick it up from **Updates** or `self-update`.
 
 ## Changelog highlights
+
+### 0.4.0
+
+- **Retry** a failed or cancelled run from its page: a new run (trigger `retry`, linked as "Retry of #N") with the current instructions file.
+- **Revoke** a project's webhook token; the webhook card shows the token state and when it was generated.
+- **Copy** the visible log (all steps or the focused step) as plain text with timestamps and stream markers.
+- Executed commands in the log are **highlighted as bash** with a richer palette.
+- Destructive and important actions ask in an in-app dialog instead of the browser's `confirm()` (keyboard friendly; `Esc` cancels). Cancelling a run now asks first.
+- Database migrations 4 and 5 run automatically (`projects.webhook_token_created_at`, `runs.retry_of`).
 
 ### 0.3.0
 
