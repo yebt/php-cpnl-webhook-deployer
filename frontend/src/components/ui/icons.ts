@@ -25,6 +25,7 @@ export const iconPaths = {
   send: 'M22 2 11 13M22 2l-7 20-4-9-9-4z',
   // Ring, shaft (ring → 15.5,7.5 → 19,4 → 21,2) and the two teeth: every segment is connected.
   key: 'M21 2l-2 2M11.39 11.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zM11.39 11.61 15.5 7.5M15.5 7.5l3 3L22 7l-3-3M15.5 7.5 19 4',
+  retry: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',
   update: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 16V8M8 12l4-4 4 4',
   external: 'M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
   alert: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',

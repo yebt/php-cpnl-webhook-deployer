@@ -66,6 +66,7 @@ export const runsApi = {
   logs: (id: number, after: number, limit: number) =>
     api.get<LogChunk>(`/api/runs/${id}/logs`, { query: { after, limit } }),
   cancel: (id: number) => api.post<{ result: 'cancelled' | 'requested' }>(`/api/runs/${id}/cancel`),
+  retry: (id: number) => api.post<{ run_id: number; status: RunStatus; retry_of: number }>(`/api/runs/${id}/retry`),
 }
 
 export const notifiersApi = {

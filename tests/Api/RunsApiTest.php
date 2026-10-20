@@ -154,6 +154,65 @@ final class RunsApiTest extends ApiTestCase
         self::assertSame(401, $this->call('GET', '/api/runs/1/logs')->status);
     }
 
+    public function testRetryOfAFailedRunQueuesANewRunWithTheCurrentInstructions(): void
+    {
+        $project = $this->createProjectViaApi('shop', "steps:\n  - name: Boom\n    run: exit 4\n");
+        $failed = $this->runNow($project['id']);
+        file_put_contents($project['folder'] . '/deployer.yml', "steps:\n  - name: Fixed\n    run: echo fixed\n");
+        $this->launcher->launched = [];
+
+        $response = $this->call('POST', "/api/runs/{$failed}/retry");
+
+        self::assertSame(202, $response->status, $response->body);
+        $body = $this->json($response);
+        self::assertSame(['run_id' => $body['run_id'], 'status' => 'queued', 'retry_of' => $failed], $body);
+        self::assertNotSame($failed, $body['run_id']);
+        self::assertSame([$project['id']], $this->launcher->launched);
+
+        $retry = $this->json($this->call('GET', '/api/runs/' . $body['run_id']))['run'];
+        self::assertSame('retry', $retry['trigger']);
+        self::assertSame($failed, $retry['retry_of']);
+        self::assertSame('queued', $retry['status']);
+        self::assertNull($this->json($this->call('GET', "/api/runs/{$failed}"))['run']['retry_of']);
+
+        ($this->app->drainProjectQueue())($project['id']);
+        $finished = $this->json($this->call('GET', '/api/runs/' . $body['run_id']))['run'];
+        self::assertSame('success', $finished['status']);
+        self::assertSame(['Fixed'], array_column($finished['steps'], 'name'));
+
+        $listed = $this->json($this->call('GET', '/api/runs', query: ['project' => (string) $project['id']]))['runs'];
+        self::assertSame([$failed, null], array_column($listed, 'retry_of'));
+    }
+
+    public function testRetryOfACancelledRunIsAllowed(): void
+    {
+        $project = $this->createProjectViaApi('shop');
+        $queued = $this->json($this->call('POST', '/api/projects/' . $project['id'] . '/runs'))['run_id'];
+        $this->call('POST', "/api/runs/{$queued}/cancel");
+
+        $response = $this->call('POST', "/api/runs/{$queued}/retry");
+
+        self::assertSame(202, $response->status, $response->body);
+        self::assertSame($queued, $this->json($response)['retry_of']);
+    }
+
+    public function testOnlyFailedOrCancelledRunsCanBeRetried(): void
+    {
+        $project = $this->createProjectViaApi('shop');
+        $succeeded = $this->runNow($project['id']);
+        $queued = $this->json($this->call('POST', '/api/projects/' . $project['id'] . '/runs'))['run_id'];
+        $before = (int) $this->app->pdo()->query('SELECT COUNT(*) FROM runs')->fetchColumn();
+
+        foreach ([$succeeded, $queued] as $runId) {
+            $response = $this->call('POST', "/api/runs/{$runId}/retry");
+            self::assertSame(409, $response->status, $response->body);
+            self::assertSame('not_retryable', $this->json($response)['error']['code']);
+        }
+        self::assertSame(404, $this->call('POST', '/api/runs/999/retry')->status);
+        self::assertSame(403, $this->call('POST', "/api/runs/{$succeeded}/retry", headers: ['x-csrf-token' => 'nope'])->status);
+        self::assertSame($before, (int) $this->app->pdo()->query('SELECT COUNT(*) FROM runs')->fetchColumn());
+    }
+
     private function runNow(int $projectId): int
     {
         $runId = $this->json($this->call('POST', '/api/projects/' . $projectId . '/runs'))['run_id'];

@@ -105,6 +105,10 @@ final class Migrations
                 // and for tokens generated before this migration.
                 'ALTER TABLE projects ADD COLUMN webhook_token_created_at TEXT NULL',
             ],
+            5 => [
+                // A retried run points at the failed/cancelled run it repeats.
+                'ALTER TABLE runs ADD COLUMN retry_of INTEGER NULL REFERENCES runs(id) ON DELETE SET NULL',
+            ],
         ];
     }
 }

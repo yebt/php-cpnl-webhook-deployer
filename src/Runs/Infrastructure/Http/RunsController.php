@@ -10,6 +10,8 @@ use Deployer\Projects\Domain\ProjectRepository;
 use Deployer\Runs\Application\CancelRun;
 use Deployer\Runs\Application\EnqueueRun;
 use Deployer\Runs\Application\ReadRunLogs;
+use Deployer\Runs\Application\RetryRun;
+use Deployer\Runs\Application\RunNotRetryable;
 use Deployer\Runs\Domain\Run;
 use Deployer\Runs\Domain\RunFilter;
 use Deployer\Runs\Domain\RunRepository;
@@ -28,6 +30,7 @@ final class RunsController
         private readonly EnqueueRun $enqueue,
         private readonly CancelRun $cancel,
         private readonly ReadRunLogs $logs,
+        private readonly RetryRun $retry,
     ) {
     }
 
@@ -60,6 +63,16 @@ final class RunsController
                     CancelRun::NOT_FOUND => throw ApiError::notFound('Run not found.'),
                     default => throw new ApiError(409, 'already_finished', 'The run has already finished.'),
                 };
+            })
+            ->add('POST', '/api/runs/{id}/retry', function (Request $r, array $p): Response {
+                $source = $this->load($p);
+                try {
+                    $runId = ($this->retry)($source->id) ?? throw ApiError::notFound('Run not found.');
+                } catch (RunNotRetryable $e) {
+                    throw new ApiError(409, 'not_retryable', $e->getMessage());
+                }
+
+                return Response::json(['run_id' => $runId, 'status' => RunStatus::Queued->value, 'retry_of' => $source->id], 202);
             });
     }
 

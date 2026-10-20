@@ -22,15 +22,16 @@ final class EnqueueRun
 
     /**
      * @param array<string,string>|null $triggerMeta informational summary stored with the run
+     * @param int|null $retryOf the failed/cancelled run this one repeats
      * @return int the new run id
      */
-    public function __invoke(int $projectId, string $trigger, ?array $triggerMeta = null): int
+    public function __invoke(int $projectId, string $trigger, ?array $triggerMeta = null, ?int $retryOf = null): int
     {
         if ($this->projects->find($projectId) === null) {
             throw new InvalidArgumentException(sprintf('Project %d not found.', $projectId));
         }
 
-        $runId = $this->runs->enqueue($projectId, $trigger, $this->clock->now(), $triggerMeta);
+        $runId = $this->runs->enqueue($projectId, $trigger, $this->clock->now(), $triggerMeta, $retryOf);
         // If a runner already drains this project it keeps the lock and the new
         // runner exits immediately; the draining runner picks the run up.
         $this->launcher->launch($projectId);

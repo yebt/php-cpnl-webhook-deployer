@@ -23,6 +23,7 @@ final class RunPresenter
             'status' => $run->status->value,
             'trigger' => $run->trigger,
             'trigger_meta' => $run->triggerMeta,
+            'retry_of' => $run->retryOf,
             'cancel_requested' => $run->cancelRequested,
             'error' => $run->error,
             'created_at' => $run->createdAt,

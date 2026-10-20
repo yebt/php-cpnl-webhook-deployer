@@ -36,6 +36,7 @@ use Deployer\Runs\Application\EnqueueRun;
 use Deployer\Runs\Application\ExecuteRun;
 use Deployer\Runs\Application\Port\RunnerLauncher;
 use Deployer\Runs\Application\ReadRunLogs;
+use Deployer\Runs\Application\RetryRun;
 use Deployer\Runs\Application\SweepRunners;
 use Deployer\Runs\Domain\LogRepository;
 use Deployer\Runs\Domain\RunRepository;
@@ -303,7 +304,8 @@ final class Application
             new WebhookTokens($this->projects()),
             $this->runs(),
         ))->register($router);
-        (new RunsController($this->projects(), $this->runs(), $this->enqueueRun(), $this->cancelRun(), $this->readRunLogs()))->register($router);
+        $enqueue = $this->enqueueRun();
+        (new RunsController($this->projects(), $this->runs(), $enqueue, $this->cancelRun(), $this->readRunLogs(), new RetryRun($this->runs(), $enqueue)))->register($router);
         (new WebhookController(new WebhookTokens($this->projects()), $this->enqueueRun()))->register($router);
         (new UpdatesController(
             $this->checkForUpdate(...),

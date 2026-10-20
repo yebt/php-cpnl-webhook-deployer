@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { runsApi } from '../api'
-import { isActive } from '../api/types'
+import { isActive, isRetryable } from '../api/types'
 import LogView from '../components/runs/LogView.vue'
 import StepList from '../components/runs/StepList.vue'
 import { triggerSummary } from '../components/runs/trigger'
@@ -107,6 +107,23 @@ useBreadcrumbs(() => [
 const cancelling = ref(false)
 const cancelError = ref<string | null>(null)
 
+const retrying = ref(false)
+const retryError = ref<string | null>(null)
+const canRetry = computed(() => status.value !== null && isRetryable(status.value))
+
+/** Queues a new run of the project (current instructions file) and opens it. */
+async function retry() {
+  retrying.value = true
+  retryError.value = null
+  try {
+    const { run_id } = await runsApi.retry(props.id)
+    await router.push(`/runs/${run_id}`)
+  } catch (e) {
+    retryError.value = e instanceof Error ? e.message : String(e)
+    retrying.value = false
+  }
+}
+
 async function cancel() {
   const running = status.value === 'running'
   const confirmed = await confirm({
@@ -153,6 +170,10 @@ async function cancel() {
             <dt>Trigger</dt>
             <dd class="mono">{{ triggerSummary(run.data.value) }}</dd>
           </div>
+          <div v-if="run.data.value.retry_of">
+            <dt>Retry of</dt>
+            <dd><RouterLink :to="`/runs/${run.data.value.retry_of}`" class="link">Run #{{ run.data.value.retry_of }}</RouterLink></dd>
+          </div>
           <div v-if="run.data.value.trigger_meta?.message" class="message">
             <dt>Commit</dt>
             <dd>{{ run.data.value.trigger_meta.message }}<span v-if="run.data.value.trigger_meta.author" class="faint"> — {{ run.data.value.trigger_meta.author }}</span></dd>
@@ -168,7 +189,13 @@ async function cancel() {
             <dd class="mono">{{ duration }}</dd>
           </div>
         </dl>
-        <div v-if="active" class="actions">
+        <div v-if="canRetry" class="actions">
+          <button type="button" class="btn btn-primary" :disabled="retrying" @click="retry">
+            <AppIcon name="retry" :size="15" />
+            {{ retrying ? 'Queuing…' : 'Retry' }}
+          </button>
+        </div>
+        <div v-else-if="active" class="actions">
           <button
             type="button"
             class="btn btn-danger"
@@ -182,6 +209,7 @@ async function cancel() {
       </header>
 
       <InlineAlert v-if="cancelError">{{ cancelError }}</InlineAlert>
+      <InlineAlert v-if="retryError" title="Could not retry this run">{{ retryError }}</InlineAlert>
       <InlineAlert v-if="run.data.value.error && status === 'failed'" title="Run failed">{{ run.data.value.error }}</InlineAlert>
 
       <div class="grid" :class="{ focused: focusedStep }">
@@ -241,6 +269,7 @@ async function cancel() {
 .title-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .project { margin-left: var(--space-2); color: var(--text-muted); font-weight: 500; }
 .project:hover { color: var(--accent); }
+.link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .meta {
   grid-column: 1 / -1;
   display: flex;

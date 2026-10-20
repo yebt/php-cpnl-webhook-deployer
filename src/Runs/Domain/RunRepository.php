@@ -10,7 +10,7 @@ use Deployer\Pipeline\Domain\Step;
 interface RunRepository
 {
     /** @param array<string,string>|null $triggerMeta */
-    public function enqueue(int $projectId, string $trigger, DateTimeImmutable $now, ?array $triggerMeta = null): int;
+    public function enqueue(int $projectId, string $trigger, DateTimeImmutable $now, ?array $triggerMeta = null, ?int $retryOf = null): int;
 
     /** @return list<Run> newest first */
     public function search(RunFilter $filter): array;

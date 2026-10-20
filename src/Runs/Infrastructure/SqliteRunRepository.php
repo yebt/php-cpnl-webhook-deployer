@@ -22,11 +22,11 @@ final class SqliteRunRepository implements RunRepository
     {
     }
 
-    public function enqueue(int $projectId, string $trigger, DateTimeImmutable $now, ?array $triggerMeta = null): int
+    public function enqueue(int $projectId, string $trigger, DateTimeImmutable $now, ?array $triggerMeta = null, ?int $retryOf = null): int
     {
         $meta = $triggerMeta === null ? null : json_encode($triggerMeta, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
-        $this->exec('INSERT INTO runs (project_id, status, trigger, trigger_meta, created_at) VALUES (?, ?, ?, ?, ?)', [
-            $projectId, RunStatus::Queued->value, $trigger, $meta, $this->time($now),
+        $this->exec('INSERT INTO runs (project_id, status, trigger, trigger_meta, retry_of, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+            $projectId, RunStatus::Queued->value, $trigger, $meta, $retryOf, $this->time($now),
         ]);
 
         return (int) $this->pdo->lastInsertId();
@@ -222,6 +222,7 @@ final class SqliteRunRepository implements RunRepository
             $row['error'],
             $row['pipeline_yaml'],
             isset($row['trigger_meta']) ? (json_decode((string) $row['trigger_meta'], true) ?: null) : null,
+            isset($row['retry_of']) ? (int) $row['retry_of'] : null,
         );
     }
 

@@ -20,6 +20,8 @@ final class Run
         public readonly ?string $pipelineYaml,
         /** @var array<string,string>|null informational trigger summary (e.g. webhook ref/commit) */
         public readonly ?array $triggerMeta = null,
+        /** The failed/cancelled run this one retries, if any. */
+        public readonly ?int $retryOf = null,
     ) {
     }
 }

@@ -10,6 +10,11 @@ export function isActive(status: RunStatus): boolean {
   return status === 'queued' || status === 'running'
 }
 
+/** POST /api/runs/{id}/retry accepts runs that ended failed or cancelled (409 otherwise). */
+export function isRetryable(status: RunStatus): boolean {
+  return status === 'failed' || status === 'cancelled'
+}
+
 export interface User {
   id: number
   username: string
@@ -105,8 +110,10 @@ export interface RunSummary {
   id: number
   project: { id: number; slug: string | null; name: string | null }
   status: RunStatus
-  trigger: 'webhook' | 'manual' | 'cli' | string
+  trigger: 'webhook' | 'manual' | 'cli' | 'retry' | string
   trigger_meta: TriggerMeta | null
+  /** The failed/cancelled run this one retries (trigger "retry"). */
+  retry_of: number | null
   cancel_requested: boolean
   error: string | null
   created_at: string
