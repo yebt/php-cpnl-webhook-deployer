@@ -18,7 +18,7 @@ Second round of user feedback from production use (deploy.menukap.com), shipped 
 - [x] T1 — Confirm modal + replace all `window.confirm`. Route: delegated.
 - [x] T2 — Token revocation (API + UI + tests). Route: delegated.
 - [x] T3 — Retry failed/cancelled runs (migration if needed, API, UI, tests). Route: delegated.
-- [ ] T4 — Copy logs + bash highlighting for command lines. Route: delegated.
+- [x] T4 — Copy logs + bash highlighting for command lines. Route: delegated.
 - [ ] T5 — README updates (retry, revoke, copy) + changelog 0.4.0. Route: delegated.
 
 ## Checks
@@ -53,5 +53,21 @@ PHPUnit, vitest, vue-tsc, frontend build, phar build, headless browser screensho
 - UI: "Retry" (primary, no confirm — non-destructive) on failed/cancelled runs, navigates to the new run; "Retry of → Run #N" link in the run header meta; new `retry` icon; `isRetryable()` helper.
 - RED: 3 new `RunsApiTest` cases failed (405); `api/types.test.ts` failed (`isRetryable` missing). GREEN: `vendor/bin/phpunit` OK (275 tests, 963 assertions); `npx vitest run` 51 passed; `vue-tsc` OK.
 
+### T4 — copy logs + bash highlighting (commit d3c40e5)
+- Route: delegated (2 pure modules + UI wiring).
+- Copy: `lib/logCopy.ts` `formatLogForCopy(lines)` → `HH:MM:SS  <text>\n` per line, `[stderr] ` prefix for stderr; command lines keep the runner's `$ ` prefix (multi-line commands keep their newlines). `RunView` passes `visibleLines` (all steps or the focused step) to `CopyButton` as a function, so the text is built at click time (works while live). `lib/clipboard.ts` `copyText()`: Clipboard API, fallback hidden textarea + `execCommand('copy')`, resolves false when both fail; `CopyButton` shows Copied / Copy failed for 1.6 s with a polite live region. The button has an explicit accessible name ("Copy the whole log" / "Copy the log of step N").
+- Highlighting: `lib/bashHighlight.ts` lossless tokenizer (tokens always join back to the input; never throws/stalls) with types keyword, command (first word of a simple command, incl. after `&& || | ; ( $(` and leading keywords), string (single, double with escapes, `$'..'`, multi-line), variable (`$X`, `${X}`, specials, `$(`/`)` markers with the inside tokenized; inside double quotes `$(...)` is one variable token; backticks), operator (separators, redirections incl. `2>&1`, `>>`, `<`, heredoc `<<`), comment (`#` at word start only), flag, number, assignment `NAME=` as variable. Heredoc bodies are one string token. Rendered as `<span class="sh-*">{{ text }}</span>` (no `v-html`), each line tokenized once (cache by line id).
+- Palette decision: the log keeps a dark background in both OS themes, so one set of `--sh-*` tokens in `:root` serves both (not duplicated in the light block): keywords violet, commands teal (brand), strings green, variables cyan, operators pink, flags blue, numbers amber, comments muted italic. Contrast on `--log-bg`: ≥ 9:1, comments 5.7:1.
+- RED: `bashHighlight.test.ts` (17 cases: quotes with escapes, nested `$(...)`, heredoc, `#` inside strings/words, lossless on malformed input) and `logCopy.test.ts` failed (modules missing). GREEN: all pass; `npx vitest run` 71 passed; `vue-tsc` OK.
+
+## Final verification (built phar, headless Chrome)
+- `DEPLOYER_VERSION=0.4.0 build/build.sh --skip-frontend` → `dist/deployer.phar` 0.4.0; `php dist/deployer.phar about` → `Deployer 0.4.0`, Schema 5.
+- Scratch site: phar as `index.php` under `php -S`, separate `DEPLOYER_DATA_DIR`; playwright-core in a scratch dir driving system Chrome (not added to the repo). All checks PASS:
+  - webhook 202 with token; confirm dialog `role=alertdialog`, danger focus on Cancel, Esc cancels + focus returns to "Delete project", Enter on Cancel cancels, Tab trap cycles, backdrop click cancels; revoke via Tab+Enter → "No token" → webhook `401 invalid_token` (curl-equivalent fetch).
+  - failing run: command lines rendered with 9 token classes; Copy (all) = timestamps, `$ ` commands, `[stderr]` lines; Copy (focused step 2) = only step 2 (6 lines); without the Clipboard API the fallback reported "Copied".
+  - Retry → navigates to `/runs/2`, "Retry of Run #1" link, API `trigger=retry`, `retry_of=1`; mobile delete-project confirm via Tab+Enter deletes and goes to `/projects`.
+- Screenshots (desktop 1440 dark + light modal, mobile 375 light): `/tmp/claude-1000/-home-webcloster-dev-Development-Repos-PRODUCTIVITY-deployer-compiled/7a5f203f-571e-473a-b75e-14c312bb1b53/scratchpad/ui-feedback-2/`.
+- Note: the first scratch pipeline failed validation (`file: ${f}` parsed as a YAML map, then `${f}` as an unknown pipeline variable — needs `$${f}`); fixed in the scratch YAML only, not a product bug.
+
 ## Next step
-T4.
+T5.
