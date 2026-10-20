@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import type { LogLine } from '../../api/types'
+import { highlightBash, type BashToken } from '../../lib/bashHighlight'
 import { clockTime } from '../../lib/format'
 import AppIcon from '../ui/AppIcon.vue'
 
@@ -73,6 +74,17 @@ function isCommand(line: LogLine): boolean {
   return line.stream === 'system' && line.line.startsWith('$ ')
 }
 
+/** Tokenized commands by line id: log lines never change, so each is tokenized once. */
+const commandTokens = new Map<number, BashToken[]>()
+function tokensFor(line: LogLine): BashToken[] {
+  let tokens = commandTokens.get(line.id)
+  if (!tokens) {
+    tokens = highlightBash(line.line.slice(2))
+    commandTokens.set(line.id, tokens)
+  }
+  return tokens
+}
+
 function isStepHeader(line: LogLine): boolean {
   return line.stream === 'system' && /^Step \d+\/\d+: /.test(line.line)
 }
@@ -98,7 +110,13 @@ function isStepHeader(line: LogLine): boolean {
         :class="[`is-${line.stream}`, { command: isCommand(line), header: isStepHeader(line) }]"
       >
         <time class="ts" :datetime="line.at">{{ clockTime(line.at) }}</time>
-        <span v-if="isCommand(line)" class="text"><span class="prompt" aria-hidden="true">▸</span> {{ line.line.slice(2) }}</span>
+        <span v-if="isCommand(line)" class="text"
+          ><span class="prompt" aria-hidden="true">▸</span> <span
+            v-for="(token, index) in tokensFor(line)"
+            :key="index"
+            :class="`sh-${token.type}`"
+          >{{ token.text }}</span></span
+        >
         <span v-else class="text">{{ line.line }}</span>
       </div>
     </div>
@@ -147,8 +165,17 @@ function isStepHeader(line: LogLine): boolean {
 .is-system .text { color: #8b929b; }
 .header { margin-top: var(--space-2); }
 .header .text { color: #c9d1d9; font-weight: 600; }
-.command .text { color: #7ee7d6; }
-.prompt { color: #5eead4; }
+.command .text { color: var(--sh-text); }
+.prompt { color: var(--accent); }
+/* Bash highlighting of executed commands (tokens from lib/bashHighlight). */
+.sh-keyword { color: var(--sh-keyword); font-weight: 600; }
+.sh-command { color: var(--sh-command); font-weight: 600; }
+.sh-string { color: var(--sh-string); }
+.sh-variable { color: var(--sh-variable); }
+.sh-operator { color: var(--sh-operator); }
+.sh-comment { color: var(--sh-comment); font-style: italic; }
+.sh-flag { color: var(--sh-flag); }
+.sh-number { color: var(--sh-number); }
 .jump { position: absolute; right: var(--space-4); bottom: var(--space-3); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4); }
 @media (max-width: 900px) {
   .log { max-height: 70vh; }

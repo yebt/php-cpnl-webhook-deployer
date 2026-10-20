@@ -30,6 +30,19 @@
   --neutral: #8b949e;
   --stderr: #ff8a80;
   --log-bg: #0a0b0d;
+  /*
+   * Bash highlighting in the run log. The log keeps a dark background in both themes,
+   * so one palette serves both; every colour is >= 9:1 on --log-bg except comments (5.7:1).
+   */
+  --sh-text: #d7dbe0;
+  --sh-keyword: #c4a5ff;
+  --sh-command: #5eead4;
+  --sh-string: #b8e986;
+  --sh-variable: #67d8ef;
+  --sh-operator: #ff8fc8;
+  --sh-comment: #848d97;
+  --sh-flag: #8cb8ff;
+  --sh-number: #ffc66d;
   /* Selected/current item (nav, steps): a quiet fill, no accent bar. */
   --selected-bg: #20252b;
 

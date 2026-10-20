@@ -7,6 +7,7 @@ import LogView from '../components/runs/LogView.vue'
 import StepList from '../components/runs/StepList.vue'
 import { triggerSummary } from '../components/runs/trigger'
 import AppIcon from '../components/ui/AppIcon.vue'
+import CopyButton from '../components/ui/CopyButton.vue'
 import InlineAlert from '../components/ui/InlineAlert.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
 import StatusIcon from '../components/ui/StatusIcon.vue'
@@ -18,6 +19,7 @@ import { useNow } from '../composables/useNow'
 import { useResource } from '../composables/useResource'
 import { useToasts } from '../composables/useToasts'
 import { elapsedSince, formatDuration, fullDateTime, timeAgo } from '../lib/format'
+import { formatLogForCopy } from '../lib/logCopy'
 import { linesForStep, parseStepQuery, stepQueryValue } from '../lib/logSteps'
 
 const props = defineProps<{ id: number }>()
@@ -68,6 +70,9 @@ const focusedEmptyText = computed(() => {
   if (step.status === 'skipped') return 'This step was skipped.'
   return step.status === 'running' ? 'Waiting for output…' : 'This step produced no output.'
 })
+
+/** Exactly what the log card shows (all steps or the focused one), read at click time. */
+const copyLog = () => formatLogForCopy(visibleLines.value)
 
 function selectStep(position: number | null) {
   const query = { ...route.query }
@@ -238,6 +243,11 @@ async function cancel() {
             <div class="log-tools">
               <span v-if="stream.polling.value && active" class="live"><span class="dot" aria-hidden="true" /> Live</span>
               <span v-else-if="stream.error.value" class="error-text">{{ stream.error.value }}</span>
+              <CopyButton
+                :text="copyLog"
+                :disabled="visibleLines.length === 0"
+                :aria-label="focusedStep ? `Copy the log of step ${focusedStep.position + 1}` : 'Copy the whole log'"
+              />
               <button v-if="focusedStep" type="button" class="btn btn-sm" aria-keyshortcuts="Escape" @click="selectStep(null)">
                 All steps <kbd class="key">Esc</kbd>
               </button>
