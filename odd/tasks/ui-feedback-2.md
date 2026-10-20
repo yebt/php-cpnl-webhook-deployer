@@ -19,7 +19,7 @@ Second round of user feedback from production use (deploy.menukap.com), shipped 
 - [x] T2 — Token revocation (API + UI + tests). Route: delegated.
 - [x] T3 — Retry failed/cancelled runs (migration if needed, API, UI, tests). Route: delegated.
 - [x] T4 — Copy logs + bash highlighting for command lines. Route: delegated.
-- [ ] T5 — README updates (retry, revoke, copy) + changelog 0.4.0. Route: delegated.
+- [x] T5 — README updates (retry, revoke, copy) + changelog 0.4.0. Route: delegated.
 
 ## Checks
 PHPUnit, vitest, vue-tsc, frontend build, phar build, headless browser screenshots (desktop + mobile) of modal, revoke, retry, copy, highlighting.
@@ -69,5 +69,15 @@ PHPUnit, vitest, vue-tsc, frontend build, phar build, headless browser screensho
 - Screenshots (desktop 1440 dark + light modal, mobile 375 light): `/tmp/claude-1000/-home-webcloster-dev-Development-Repos-PRODUCTIVITY-deployer-compiled/7a5f203f-571e-473a-b75e-14c312bb1b53/scratchpad/ui-feedback-2/`.
 - Note: the first scratch pipeline failed validation (`file: ${f}` parsed as a YAML map, then `${f}` as an unknown pipeline variable — needs `$${f}`); fixed in the scratch YAML only, not a product bug.
 
+### T5 — README (commit 71aad8e)
+- Route: delegated (docs only; passive, structural readback).
+- README: feature list (highlighting, Copy, cancel and retry, revoke); "Watching a run" gains a Copy/Retry table; "Webhooks" documents the single token, its state and Revoke (`DELETE /api/projects/{id}/token`); changelog highlights 0.4.0 (incl. migrations 4–5 and the new cancel confirmation). The confirm dialog is mentioned only in the changelog.
+
+### Closing checks (after T5)
+- `vendor/bin/phpunit`: OK (275 tests, 963 assertions). `php -l`: 167/167 files without syntax errors.
+- `npx vitest run`: 71 passed. `npx vue-tsc --noEmit`: OK. `npm run build`: built.
+- Phar build + `about`: see "Final verification" (0.4.0, schema 5).
+- Side effect: an earlier `php dist/deployer.phar about` from the repo root migrated the ignored local `deployer-data/deployer.sqlite` to schema 5 (additive columns only).
+
 ## Next step
-T5.
+User: review, then fast-forward `main`, tag `v0.4.0`, push (`git push origin main v0.4.0`) and publish the release with `dist/deployer.phar`.
