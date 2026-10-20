@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import AppShell from './components/layout/AppShell.vue'
+import ConfirmDialog from './components/ui/ConfirmDialog.vue'
 import ToastStack from './components/ui/ToastStack.vue'
 
 const route = useRoute()
@@ -20,4 +21,5 @@ const bare = computed(() => route.meta.bare === true)
     </RouterView>
   </AppShell>
   <ToastStack />
+  <ConfirmDialog />
 </template>

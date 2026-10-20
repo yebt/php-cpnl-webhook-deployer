@@ -12,6 +12,7 @@ import StatusBadge from '../components/ui/StatusBadge.vue'
 import StatusIcon from '../components/ui/StatusIcon.vue'
 import { emitRunFinished } from '../composables/runEvents'
 import { useBreadcrumbs } from '../composables/useBreadcrumbs'
+import { useConfirm } from '../composables/useConfirm'
 import { useLogStream } from '../composables/useLogStream'
 import { useNow } from '../composables/useNow'
 import { useResource } from '../composables/useResource'
@@ -24,6 +25,7 @@ const props = defineProps<{ id: number }>()
 const run = useResource(() => runsApi.get(props.id))
 const now = useNow(1000)
 const toasts = useToasts()
+const confirm = useConfirm()
 
 // Step statuses come from the run detail; it is refreshed whenever the log moves.
 let refreshQueued = false
@@ -106,6 +108,17 @@ const cancelling = ref(false)
 const cancelError = ref<string | null>(null)
 
 async function cancel() {
+  const running = status.value === 'running'
+  const confirmed = await confirm({
+    title: `Cancel run #${props.id}?`,
+    message: running
+      ? 'The current step is stopped and the remaining steps are skipped.'
+      : 'The run leaves the queue without starting.',
+    confirmLabel: 'Cancel run',
+    cancelLabel: running ? 'Keep running' : 'Keep queued',
+    danger: true,
+  })
+  if (!confirmed) return
   cancelling.value = true
   cancelError.value = null
   try {

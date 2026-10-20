@@ -6,11 +6,13 @@ import { ApiError } from '../api/client'
 import YamlEditor from '../components/editor/YamlEditor.vue'
 import InlineAlert from '../components/ui/InlineAlert.vue'
 import { useBreadcrumbs } from '../composables/useBreadcrumbs'
+import { useConfirm } from '../composables/useConfirm'
 import { useResource } from '../composables/useResource'
 import { useToasts } from '../composables/useToasts'
 
 const props = defineProps<{ id: number }>()
 const toasts = useToasts()
+const confirm = useConfirm()
 
 const STARTER = `# Steps run in order inside the project folder. A step stops at its first
 # failing command (set "strict: false" on a step to only check the last one).
@@ -91,8 +93,15 @@ async function save(force = false) {
   }
 }
 
-function confirmLeave(): boolean {
-  return !dirty.value || window.confirm('You have unsaved changes. Leave without saving?')
+async function confirmLeave(): Promise<boolean> {
+  if (!dirty.value) return true
+  return confirm({
+    title: 'Leave without saving?',
+    message: 'Your unsaved changes to the instructions are lost.',
+    confirmLabel: 'Discard changes',
+    cancelLabel: 'Keep editing',
+    danger: true,
+  })
 }
 onBeforeRouteLeave(() => confirmLeave())
 function beforeUnload(event: BeforeUnloadEvent) {

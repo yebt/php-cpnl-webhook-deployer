@@ -6,12 +6,14 @@ import AppIcon from '../components/ui/AppIcon.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import InlineAlert from '../components/ui/InlineAlert.vue'
 import { useBreadcrumbs } from '../composables/useBreadcrumbs'
+import { useConfirm } from '../composables/useConfirm'
 import { useResource } from '../composables/useResource'
 import { useToasts } from '../composables/useToasts'
 
 useBreadcrumbs(() => [{ label: 'Notifiers' }])
 
 const toasts = useToasts()
+const confirm = useConfirm()
 const notifiers = useResource(() => notifiersApi.list())
 const testing = ref<number | null>(null)
 const results = ref<Record<number, { ok: boolean; message: string }>>({})
@@ -30,7 +32,13 @@ async function test(notifier: Notifier) {
 }
 
 async function remove(notifier: Notifier) {
-  if (!window.confirm(`Delete "${notifier.name}"? Projects using it stop sending notifications.`)) return
+  const confirmed = await confirm({
+    title: `Delete "${notifier.name}"?`,
+    message: 'Projects using it stop sending notifications.',
+    confirmLabel: 'Delete notifier',
+    danger: true,
+  })
+  if (!confirmed) return
   error.value = null
   try {
     await notifiersApi.remove(notifier.id)

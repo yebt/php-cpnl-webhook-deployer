@@ -9,8 +9,8 @@ export interface UpdatesClient {
 
 export interface UseUpdatesOptions {
   client: UpdatesClient
-  /** Blocking confirmation (window.confirm in the app). */
-  confirm: (message: string) => boolean
+  /** Asks before applying (the in-app confirm dialog in the app). */
+  confirm: (question: { title: string; message: string }) => boolean | Promise<boolean>
   /** Loads the new version of the UI after a successful update. */
   reloadPage: () => void
   reloadDelayMs?: number
@@ -22,25 +22,30 @@ export function useUpdates(options: UseUpdatesOptions) {
   const applying = ref(false)
   const applyError = ref<string | null>(null)
   const result = ref<UpdateResult | null>(null)
+  let confirming = false
 
   const canUpdate = computed(() => {
     const s = resource.data.value
     return !!s && s.available && s.can_apply && !s.current_is_dev && s.latest !== null
   })
 
-  function confirmationMessage(s: UpdateStatus): string {
-    let message = `Update Deployer from ${s.current} to ${s.latest?.version}?`
-    if (s.active_runs > 0) {
-      const runs = s.active_runs === 1 ? '1 run is' : `${s.active_runs} runs are`
-      message += `\n\n${runs} queued or running. They keep running on the current version until they finish; later runs use the new version.`
+  function confirmation(s: UpdateStatus): { title: string; message: string } {
+    const title = `Update Deployer from ${s.current} to ${s.latest?.version}?`
+    if (s.active_runs === 0) return { title, message: 'The page reloads into the new version when it is installed.' }
+    const runs = s.active_runs === 1 ? '1 run is' : `${s.active_runs} runs are`
+    return {
+      title,
+      message: `${runs} queued or running. They keep running on the current version until they finish; later runs use the new version.`,
     }
-    return message
   }
 
   async function apply(): Promise<void> {
     const s = resource.data.value
     if (!s || !canUpdate.value || applying.value) return
-    if (!options.confirm(confirmationMessage(s))) return
+    if (confirming) return
+    confirming = true
+    const confirmed = await Promise.resolve(options.confirm(confirmation(s))).finally(() => (confirming = false))
+    if (!confirmed) return
 
     applying.value = true
     applyError.value = null

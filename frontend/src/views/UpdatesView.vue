@@ -3,13 +3,15 @@ import { updatesApi } from '../api'
 import UpdatePanel from '../components/updates/UpdatePanel.vue'
 import InlineAlert from '../components/ui/InlineAlert.vue'
 import { useBreadcrumbs } from '../composables/useBreadcrumbs'
+import { useConfirm } from '../composables/useConfirm'
 import { useUpdates } from '../composables/useUpdates'
 
 useBreadcrumbs(() => [{ label: 'Updates' }])
 
+const confirm = useConfirm()
 const updates = useUpdates({
   client: updatesApi,
-  confirm: (message) => window.confirm(message),
+  confirm: ({ title, message }) => confirm({ title, message, confirmLabel: 'Update' }),
   reloadPage: () => window.location.reload(),
 })
 </script>

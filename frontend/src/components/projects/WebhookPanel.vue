@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { projectsApi } from '../../api'
 import type { Project } from '../../api/types'
+import { useConfirm } from '../../composables/useConfirm'
 import { absoluteAppUrl } from '../../lib/base'
 import AppIcon from '../ui/AppIcon.vue'
 import CopyButton from '../ui/CopyButton.vue'
@@ -9,6 +10,7 @@ import InlineAlert from '../ui/InlineAlert.vue'
 
 const props = defineProps<{ project: Project }>()
 const emit = defineEmits<{ tokenChanged: [] }>()
+const confirm = useConfirm()
 
 const url = computed(() => absoluteAppUrl(props.project.webhook_path))
 const HEADER = 'X-Deployer-Token'
@@ -25,7 +27,12 @@ const curl = computed(
 async function regenerate() {
   if (
     props.project.has_webhook_token &&
-    !window.confirm('Generate a new token? The current token stops working immediately; update your CI secret afterwards.')
+    !(await confirm({
+      title: 'Generate a new token?',
+      message: 'The current token stops working immediately; update your CI secret afterwards.',
+      confirmLabel: 'Regenerate token',
+      danger: true,
+    }))
   ) {
     return
   }

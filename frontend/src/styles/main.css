@@ -21,6 +21,8 @@
   --success: #3fb950;
   --danger: #f85149;
   --danger-soft: rgba(248, 81, 73, 0.12);
+  /* Filled destructive buttons: white text needs a deeper red than --danger (4.5:1). */
+  --danger-solid: #da3633;
   --warning: #e3b341;
   --warning-soft: rgba(227, 179, 65, 0.12);
   --info: #58a6ff;
@@ -65,6 +67,7 @@
     --success: #1a7f37;
     --danger: #cf222e;
     --danger-soft: rgba(207, 34, 46, 0.08);
+  --danger-solid: #cf222e;
     --warning: #9a6700;
     --warning-soft: rgba(154, 103, 0, 0.1);
     --info: #0969da;

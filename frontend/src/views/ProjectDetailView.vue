@@ -10,6 +10,7 @@ import AppIcon from '../components/ui/AppIcon.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import InlineAlert from '../components/ui/InlineAlert.vue'
 import { useBreadcrumbs } from '../composables/useBreadcrumbs'
+import { useConfirm } from '../composables/useConfirm'
 import { usePolling } from '../composables/usePolling'
 import { useResource } from '../composables/useResource'
 import { useToasts } from '../composables/useToasts'
@@ -17,6 +18,7 @@ import { useToasts } from '../composables/useToasts'
 const props = defineProps<{ id: number }>()
 const router = useRouter()
 const toasts = useToasts()
+const confirm = useConfirm()
 
 const PAGE = 20
 const project = useResource(() => projectsApi.get(props.id))
@@ -71,7 +73,13 @@ async function deploy() {
 
 async function remove() {
   const name = project.data.value?.name ?? 'this project'
-  if (!window.confirm(`Delete "${name}" and its run history? Files on the server are not touched.`)) return
+  const confirmed = await confirm({
+    title: `Delete "${name}"?`,
+    message: 'Its run history is deleted too. Files on the server are not touched.',
+    confirmLabel: 'Delete project',
+    danger: true,
+  })
+  if (!confirmed) return
   actionError.value = null
   try {
     await projectsApi.remove(props.id)
