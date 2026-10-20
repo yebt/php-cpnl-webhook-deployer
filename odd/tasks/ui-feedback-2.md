@@ -16,7 +16,7 @@ Second round of user feedback from production use (deploy.menukap.com), shipped 
 
 ## Tasks
 - [x] T1 — Confirm modal + replace all `window.confirm`. Route: delegated.
-- [ ] T2 — Token revocation (API + UI + tests). Route: delegated.
+- [x] T2 — Token revocation (API + UI + tests). Route: delegated.
 - [ ] T3 — Retry failed/cancelled runs (migration if needed, API, UI, tests). Route: delegated.
 - [ ] T4 — Copy logs + bash highlighting for command lines. Route: delegated.
 - [ ] T5 — README updates (retry, revoke, copy) + changelog 0.4.0. Route: delegated.
@@ -37,5 +37,13 @@ PHPUnit, vitest, vue-tsc, frontend build, phar build, headless browser screensho
 - `npx vitest run`: 50 passed. `npx vue-tsc --noEmit`: OK.
 - Browser check: see final verification section.
 
+### T2 — token revocation (commit 3cfeb0f)
+- Route: delegated (backend repo/use case/controller + migration + UI).
+- API: `DELETE /api/projects/{id}/token` → 204, behind the existing `/api` session + CSRF guard; idempotent (204 when there is no token), 404 for unknown projects. The webhook already answered 401 `invalid_token` for a project without a hash (verified by the new test).
+- Migration 4 (new): `projects.webhook_token_created_at TEXT NULL`, set on generate, cleared on revoke. Decision: tokens generated before 0.4.0 keep `null` (no invented backfill); the UI then says just "Active".
+- Projects expose `token_created_at` (null when no token); the hash is never returned.
+- UI: status "Active · generated <relative>" (full date in the tooltip) / "No token"; "Revoke token" (danger confirm, only when a token exists) next to "Generate/Regenerate token"; a freshly shown token is hidden after revoking. Wording decision: "generated 3m ago" instead of "since 3m ago" (reads correctly with relative times).
+- RED: 3 new `WebhookApiTest` cases failed (405 for DELETE, missing `token_created_at`). GREEN: `vendor/bin/phpunit` OK (272 tests, 937 assertions). `npx vitest run`: 50 passed; `vue-tsc`: OK.
+
 ## Next step
-T2.
+T3.
