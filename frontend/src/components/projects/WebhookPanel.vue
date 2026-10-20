@@ -4,6 +4,7 @@ import { projectsApi } from '../../api'
 import type { Project } from '../../api/types'
 import { useConfirm } from '../../composables/useConfirm'
 import { absoluteAppUrl } from '../../lib/base'
+import { fullDateTime, timeAgo } from '../../lib/format'
 import AppIcon from '../ui/AppIcon.vue'
 import CopyButton from '../ui/CopyButton.vue'
 import InlineAlert from '../ui/InlineAlert.vue'
@@ -17,8 +18,14 @@ const HEADER = 'X-Deployer-Token'
 
 /** The plain token exists only in this component's memory, right after generation. */
 const token = ref<string | null>(null)
-const busy = ref(false)
+const busy = ref<'generate' | 'revoke' | null>(null)
 const error = ref<string | null>(null)
+
+const tokenState = computed(() => {
+  if (!props.project.has_webhook_token) return 'No token'
+  const created = props.project.token_created_at
+  return created ? `Active · generated ${timeAgo(created)}` : 'Active'
+})
 
 const curl = computed(
   () => `curl -fsS -X POST "${url.value}" \\\n  -H "${HEADER}: ${token.value ?? '$DEPLOYER_TOKEN'}"`,
@@ -36,7 +43,7 @@ async function regenerate() {
   ) {
     return
   }
-  busy.value = true
+  busy.value = 'generate'
   error.value = null
   try {
     token.value = (await projectsApi.regenerateToken(props.project.id)).token
@@ -44,7 +51,28 @@ async function regenerate() {
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
-    busy.value = false
+    busy.value = null
+  }
+}
+
+async function revoke() {
+  const confirmed = await confirm({
+    title: 'Revoke the webhook token?',
+    message: 'Webhook calls are rejected (401) until you generate a new token. Runs started from the UI are not affected.',
+    confirmLabel: 'Revoke token',
+    danger: true,
+  })
+  if (!confirmed) return
+  busy.value = 'revoke'
+  error.value = null
+  try {
+    await projectsApi.revokeToken(props.project.id)
+    token.value = null
+    emit('tokenChanged')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = null
   }
 }
 </script>
@@ -53,8 +81,9 @@ async function regenerate() {
   <section class="card" aria-labelledby="webhook-title">
     <div class="card-header">
       <h2 id="webhook-title"><AppIcon name="webhook" :size="15" class="icon" /> Webhook</h2>
-      <span class="status" :class="{ ok: project.has_webhook_token }">
-        {{ project.has_webhook_token ? 'Token configured' : 'No token yet' }}
+      <span class="status" :class="{ ok: project.has_webhook_token }" :title="fullDateTime(project.token_created_at)">
+        <span class="state-dot" aria-hidden="true" />
+        {{ tokenState }}
       </span>
     </div>
     <div class="card-body body">
@@ -91,10 +120,20 @@ async function regenerate() {
         <pre class="example">{{ curl }}</pre>
       </div>
 
-      <div>
-        <button type="button" class="btn" :disabled="busy" @click="regenerate">
+      <div class="token-actions">
+        <button type="button" class="btn" :disabled="busy !== null" @click="regenerate">
           <AppIcon name="key" :size="15" />
-          {{ busy ? 'Generating…' : project.has_webhook_token ? 'Regenerate token' : 'Generate token' }}
+          {{ busy === 'generate' ? 'Generating…' : project.has_webhook_token ? 'Regenerate token' : 'Generate token' }}
+        </button>
+        <button
+          v-if="project.has_webhook_token"
+          type="button"
+          class="btn btn-danger"
+          :disabled="busy !== null"
+          @click="revoke"
+        >
+          <AppIcon name="ban" :size="15" />
+          {{ busy === 'revoke' ? 'Revoking…' : 'Revoke token' }}
         </button>
       </div>
     </div>
@@ -104,8 +143,10 @@ async function regenerate() {
 <style scoped>
 h2 { display: flex; align-items: center; gap: var(--space-2); }
 .icon { color: var(--text-muted); }
-.status { color: var(--text-faint); font-size: 12.5px; }
+.status { display: inline-flex; align-items: center; gap: 6px; color: var(--text-faint); font-size: 12.5px; text-align: right; }
 .status.ok { color: var(--success); }
+.state-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.token-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
 .intro { margin: 0; }
 .pairs { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0; align-items: center; }

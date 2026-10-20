@@ -57,8 +57,15 @@ final class SqliteProjectRepository implements ProjectRepository
 
     public function setWebhookTokenHash(int $id, string $hash): void
     {
-        $this->pdo->prepare('UPDATE projects SET webhook_token_hash = ?, updated_at = ? WHERE id = ?')
-            ->execute([$hash, gmdate('Y-m-d H:i:s'), $id]);
+        $now = gmdate('Y-m-d H:i:s');
+        $this->pdo->prepare('UPDATE projects SET webhook_token_hash = ?, webhook_token_created_at = ?, updated_at = ? WHERE id = ?')
+            ->execute([$hash, $now, $now, $id]);
+    }
+
+    public function clearWebhookToken(int $id): void
+    {
+        $this->pdo->prepare('UPDATE projects SET webhook_token_hash = NULL, webhook_token_created_at = NULL, updated_at = ? WHERE id = ? AND webhook_token_hash IS NOT NULL')
+            ->execute([gmdate('Y-m-d H:i:s'), $id]);
     }
 
     /** @param list<mixed> $params */
@@ -82,6 +89,7 @@ final class SqliteProjectRepository implements ProjectRepository
             $row['instructions_file'],
             $row['notifier_id'] === null ? null : (int) $row['notifier_id'],
             $row['webhook_token_hash'],
+            $row['webhook_token_created_at'] ?? null,
         );
     }
 }

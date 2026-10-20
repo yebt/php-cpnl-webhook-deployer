@@ -100,6 +100,11 @@ final class Migrations
                 'ALTER TABLE runs ADD COLUMN trigger_meta TEXT NULL',
                 'CREATE INDEX runs_status ON runs (status, id)',
             ],
+            4 => [
+                // When the current webhook token was generated (UTC); null when there is none,
+                // and for tokens generated before this migration.
+                'ALTER TABLE projects ADD COLUMN webhook_token_created_at TEXT NULL',
+            ],
         ];
     }
 }

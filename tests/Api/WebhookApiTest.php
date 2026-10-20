@@ -99,6 +99,53 @@ final class WebhookApiTest extends ApiTestCase
         self::assertNull($this->app->runs()->find($this->json($plain)['run_id'])?->triggerMeta);
     }
 
+    public function testTokenCreationTimeIsExposedButNeverTheHash(): void
+    {
+        $this->setUpSession();
+        $project = $this->json($this->call('GET', '/api/projects/' . $this->project['id']))['project'];
+
+        self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', (string) $project['token_created_at']);
+        self::assertArrayNotHasKey('webhook_token_hash', $project);
+        self::assertNull($this->project['token_created_at']);
+    }
+
+    public function testRevokingTheTokenRejectsTheWebhookUntilANewTokenIsGenerated(): void
+    {
+        $this->setUpSession();
+        $revoke = $this->call('DELETE', '/api/projects/' . $this->project['id'] . '/token');
+
+        self::assertSame(204, $revoke->status, $revoke->body);
+        self::assertNull($this->app->pdo()->query('SELECT webhook_token_hash FROM projects')->fetchColumn());
+        $project = $this->json($this->call('GET', '/api/projects/' . $this->project['id']))['project'];
+        self::assertFalse($project['has_webhook_token']);
+        self::assertNull($project['token_created_at']);
+
+        $this->cookies = [];
+        $rejected = $this->call('POST', '/hooks/shop', headers: ['X-Deployer-Token' => $this->token]);
+        self::assertSame(401, $rejected->status);
+        self::assertSame('invalid_token', $this->json($rejected)['error']['code']);
+        self::assertSame(0, (int) $this->app->pdo()->query('SELECT COUNT(*) FROM runs')->fetchColumn());
+
+        $this->setUpSession();
+        $fresh = $this->json($this->call('POST', '/api/projects/' . $this->project['id'] . '/token'))['token'];
+        $this->cookies = [];
+        self::assertSame(202, $this->call('POST', '/hooks/shop', headers: ['X-Deployer-Token' => $fresh])->status);
+    }
+
+    public function testRevokingIsIdempotentAndNeedsASessionAndCsrf(): void
+    {
+        $path = '/api/projects/' . $this->project['id'] . '/token';
+        self::assertSame(401, $this->call('DELETE', $path)->status);
+
+        $this->setUpSession();
+        self::assertSame(403, $this->call('DELETE', $path, headers: ['x-csrf-token' => 'nope'])->status);
+        self::assertNotNull($this->app->pdo()->query('SELECT webhook_token_hash FROM projects')->fetchColumn());
+
+        self::assertSame(204, $this->call('DELETE', $path)->status);
+        self::assertSame(204, $this->call('DELETE', $path)->status);
+        self::assertSame(404, $this->call('DELETE', '/api/projects/999/token')->status);
+    }
+
     private function setUpSession(): void
     {
         $response = $this->call('POST', '/api/login', ['username' => 'admin', 'password' => 'correct horse battery']);

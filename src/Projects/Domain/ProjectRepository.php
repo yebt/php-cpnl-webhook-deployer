@@ -19,5 +19,9 @@ interface ProjectRepository
 
     public function delete(int $id): void;
 
+    /** Stores the hash of a new token and records when it was generated. */
     public function setWebhookTokenHash(int $id, string $hash): void;
+
+    /** Removes the token: the webhook rejects every request until a new one is generated. */
+    public function clearWebhookToken(int $id): void;
 }

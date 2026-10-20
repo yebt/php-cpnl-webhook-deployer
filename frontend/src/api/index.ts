@@ -46,6 +46,7 @@ export const projectsApi = {
     (await api.put<{ project: Project }>(`/api/projects/${id}`, input)).project,
   remove: (id: number) => api.del(`/api/projects/${id}`),
   regenerateToken: (id: number) => api.post<IssuedToken>(`/api/projects/${id}/token`),
+  revokeToken: (id: number) => api.del(`/api/projects/${id}/token`),
   deploy: (id: number) => api.post<{ run_id: number; status: RunStatus }>(`/api/projects/${id}/runs`),
   instructions: (id: number) => api.get<Instructions>(`/api/projects/${id}/instructions`),
   saveInstructions: (id: number, content: string, force = false) =>

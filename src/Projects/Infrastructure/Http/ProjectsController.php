@@ -60,6 +60,11 @@ final class ProjectsController
                     'webhook_path' => self::webhookPath($project),
                     'header' => 'X-Deployer-Token',
                 ], 201);
+            })
+            ->add('DELETE', '/api/projects/{id}/token', function (Request $r, array $p): Response {
+                $this->tokens->revoke($this->load($p));
+
+                return Response::noContent();
             });
     }
 
@@ -81,6 +86,7 @@ final class ProjectsController
             'instructions_path' => $project->instructionsPath(),
             'notifier_id' => $project->notifierId,
             'has_webhook_token' => $project->webhookTokenHash !== null,
+            'token_created_at' => $project->webhookTokenHash !== null ? $project->webhookTokenCreatedAt : null,
             'webhook_path' => self::webhookPath($project),
         ];
     }

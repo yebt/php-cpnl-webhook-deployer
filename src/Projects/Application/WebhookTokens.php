@@ -23,6 +23,12 @@ final class WebhookTokens
         return $token;
     }
 
+    /** The webhook answers 401 until a new token is generated; revoking twice is harmless. */
+    public function revoke(Project $project): void
+    {
+        $this->projects->clearWebhookToken($project->id);
+    }
+
     /** Returns the project when the token matches; null for unknown slug, no token or mismatch. */
     public function verify(string $slug, ?string $token): ?Project
     {

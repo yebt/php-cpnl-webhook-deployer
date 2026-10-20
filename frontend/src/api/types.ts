@@ -79,6 +79,8 @@ export interface Project {
   instructions_path: string
   notifier_id: number | null
   has_webhook_token: boolean
+  /** When the current token was generated (UTC); null without a token or for tokens predating 0.4.0. */
+  token_created_at: string | null
   webhook_path: string
 }
 

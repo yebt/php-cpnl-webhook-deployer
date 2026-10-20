@@ -19,6 +19,8 @@ final class Project
         public readonly ?int $notifierId = null,
         /** sha256 of the webhook token; the token itself is never stored. */
         public readonly ?string $webhookTokenHash = null,
+        /** UTC `Y-m-d H:i:s`; null without a token or for tokens older than the column. */
+        public readonly ?string $webhookTokenCreatedAt = null,
     ) {
     }
 
