@@ -17,7 +17,7 @@ Second round of user feedback from production use (deploy.menukap.com), shipped 
 ## Tasks
 - [x] T1 — Confirm modal + replace all `window.confirm`. Route: delegated.
 - [x] T2 — Token revocation (API + UI + tests). Route: delegated.
-- [ ] T3 — Retry failed/cancelled runs (migration if needed, API, UI, tests). Route: delegated.
+- [x] T3 — Retry failed/cancelled runs (migration if needed, API, UI, tests). Route: delegated.
 - [ ] T4 — Copy logs + bash highlighting for command lines. Route: delegated.
 - [ ] T5 — README updates (retry, revoke, copy) + changelog 0.4.0. Route: delegated.
 
@@ -45,5 +45,13 @@ PHPUnit, vitest, vue-tsc, frontend build, phar build, headless browser screensho
 - UI: status "Active · generated <relative>" (full date in the tooltip) / "No token"; "Revoke token" (danger confirm, only when a token exists) next to "Generate/Regenerate token"; a freshly shown token is hidden after revoking. Wording decision: "generated 3m ago" instead of "since 3m ago" (reads correctly with relative times).
 - RED: 3 new `WebhookApiTest` cases failed (405 for DELETE, missing `token_created_at`). GREEN: `vendor/bin/phpunit` OK (272 tests, 937 assertions). `npx vitest run`: 50 passed; `vue-tsc`: OK.
 
+### T3 — retry (commit cdbf09d)
+- Route: delegated (migration + use case + controller + UI).
+- Design: `RetryRun` use case → `EnqueueRun(projectId, 'retry', retryOf: id)`; the runner reads the project's CURRENT instructions file when the run starts (same path as a manual deploy), not the failed run's snapshot — so a fixed pipeline is picked up. `RunNotRetryable` → 409 `not_retryable` for queued/running/success; 404 unknown run; session + CSRF from the `/api` guard.
+- Migration 5 (new): `runs.retry_of INTEGER NULL REFERENCES runs(id) ON DELETE SET NULL`. Run list/detail expose `retry_of` (null for ordinary runs). Response: `202 {run_id, status: "queued", retry_of}`.
+- Notifications: unchanged code path; a retried run is an ordinary run whose message reads `trigger: retry`.
+- UI: "Retry" (primary, no confirm — non-destructive) on failed/cancelled runs, navigates to the new run; "Retry of → Run #N" link in the run header meta; new `retry` icon; `isRetryable()` helper.
+- RED: 3 new `RunsApiTest` cases failed (405); `api/types.test.ts` failed (`isRetryable` missing). GREEN: `vendor/bin/phpunit` OK (275 tests, 963 assertions); `npx vitest run` 51 passed; `vue-tsc` OK.
+
 ## Next step
-T3.
+T4.
