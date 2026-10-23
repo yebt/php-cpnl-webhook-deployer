@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { projectsApi } from '../../api'
 import type { Project } from '../../api/types'
 import { useConfirm } from '../../composables/useConfirm'
+import { actionWebhookPath } from '../../lib/actions'
 import { absoluteAppUrl } from '../../lib/base'
 import { fullDateTime, timeAgo } from '../../lib/format'
 import AppIcon from '../ui/AppIcon.vue'
@@ -14,6 +15,7 @@ const emit = defineEmits<{ tokenChanged: [] }>()
 const confirm = useConfirm()
 
 const url = computed(() => absoluteAppUrl(props.project.webhook_path))
+const actionUrl = computed(() => absoluteAppUrl(actionWebhookPath(props.project.webhook_path, '<action-id>')))
 const HEADER = 'X-Deployer-Token'
 
 /** The plain token exists only in this component's memory, right after generation. */
@@ -89,6 +91,7 @@ async function revoke() {
     <div class="card-body body">
       <p class="muted intro">
         A <code>POST</code> to this URL with the token in the <code>{{ HEADER }}</code> header queues a deployment.
+        Append <code>/actions/&lt;action-id&gt;</code> to run an action instead.
       </p>
 
       <dl class="pairs">
@@ -96,6 +99,10 @@ async function revoke() {
         <dd>
           <code class="value">{{ url }}</code>
           <CopyButton :text="url" />
+        </dd>
+        <dt>Action</dt>
+        <dd>
+          <code class="value">{{ actionUrl }}</code>
         </dd>
         <dt>Header</dt>
         <dd>

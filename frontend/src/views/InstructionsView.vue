@@ -30,6 +30,13 @@ steps:
     timeout: 600
     env:
       COMPOSER_MEMORY_LIMIT: "-1"
+# Optional named tasks, run on demand from the project page (uncomment to use):
+# actions:
+#   clear-cache:
+#     name: Clear cache
+#     steps:
+#       - name: Clear
+#         run: php artisan cache:clear
 `
 
 const project = useResource(() => projectsApi.get(props.id))
@@ -156,6 +163,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
           <li>Built-ins: <code>${PROJECT}</code>, <code>${RUN_ID}</code>, <code>${PROJECT_DIR}</code>.</li>
           <li><code>$${NAME}</code> keeps a literal <code>${NAME}</code> for the shell.</li>
           <li>Per step: <code>name</code>, <code>run</code> (a script or a list of commands), optional <code>timeout</code> (seconds, default 3600), <code>continue_on_error</code>, <code>strict</code> (default <code>true</code>: stop at the first failing command) and <code>env</code>.</li>
+          <li><code>actions</code> (optional): named tasks run on demand from the project page or <code>POST /hooks/&lt;slug&gt;/actions/&lt;id&gt;</code>. Each key is the action id (lowercase letters, digits, <code>-</code>, <code>_</code>) with an optional <code>name</code> and <code>description</code> and its own <code>steps</code> (same fields as above). <code>vars</code> and top-level <code>env</code> apply to actions too; actions share the deploy queue.</li>
           <li>Save shortcut: <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd>. Press <kbd>Esc</kbd> then <kbd>Tab</kbd> to leave the editor.</li>
         </ul>
       </div>

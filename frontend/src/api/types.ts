@@ -114,12 +114,31 @@ export interface RunSummary {
   trigger_meta: TriggerMeta | null
   /** The failed/cancelled run this one retries (trigger "retry"). */
   retry_of: number | null
+  /** Action id for an action run; null for a deploy. */
+  action: string | null
+  /** The action's display name when the run was queued; null for a deploy. */
+  action_name: string | null
   cancel_requested: boolean
   error: string | null
   created_at: string
   started_at: string | null
   finished_at: string | null
   duration_ms: number | null
+}
+
+/** One entry of GET /api/projects/{id}/actions (parsed from the current instructions file). */
+export interface ProjectAction {
+  id: string
+  name: string
+  description: string | null
+  /** Step names, in order. */
+  steps: string[]
+}
+
+export interface ProjectActions {
+  actions: ProjectAction[]
+  /** Why the file could not be read or parsed; null when it is valid. */
+  error: string | null
 }
 
 export interface RunStep {

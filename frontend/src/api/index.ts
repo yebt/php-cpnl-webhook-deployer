@@ -8,6 +8,7 @@ import type {
   Notifier,
   NotifierInput,
   Project,
+  ProjectActions,
   ProjectInput,
   RunDetail,
   RunStatus,
@@ -48,6 +49,11 @@ export const projectsApi = {
   regenerateToken: (id: number) => api.post<IssuedToken>(`/api/projects/${id}/token`),
   revokeToken: (id: number) => api.del(`/api/projects/${id}/token`),
   deploy: (id: number) => api.post<{ run_id: number; status: RunStatus }>(`/api/projects/${id}/runs`),
+  actions: (id: number) => api.get<ProjectActions>(`/api/projects/${id}/actions`),
+  runAction: (id: number, action: string) =>
+    api.post<{ run_id: number; status: RunStatus; action: string }>(
+      `/api/projects/${id}/actions/${encodeURIComponent(action)}/runs`,
+    ),
   instructions: (id: number) => api.get<Instructions>(`/api/projects/${id}/instructions`),
   saveInstructions: (id: number, content: string, force = false) =>
     api.put<InstructionsSaved>(`/api/projects/${id}/instructions`, { content }, { query: { force: force ? 1 : undefined } }),

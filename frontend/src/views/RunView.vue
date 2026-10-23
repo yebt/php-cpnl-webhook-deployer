@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { runsApi } from '../api'
 import { isActive, isRetryable } from '../api/types'
 import LogView from '../components/runs/LogView.vue'
+import ActionBadge from '../components/runs/ActionBadge.vue'
 import StepList from '../components/runs/StepList.vue'
 import { triggerSummary } from '../components/runs/trigger'
 import AppIcon from '../components/ui/AppIcon.vue'
@@ -169,11 +170,19 @@ async function cancel() {
             </RouterLink>
           </h1>
           <StatusBadge v-if="status" :status="status" />
+          <ActionBadge :run="run.data.value" />
         </div>
         <dl class="meta">
           <div>
             <dt>Trigger</dt>
             <dd class="mono">{{ triggerSummary(run.data.value) }}</dd>
+          </div>
+          <div v-if="run.data.value.action">
+            <dt>Action</dt>
+            <dd>
+              {{ run.data.value.action_name ?? run.data.value.action }}
+              <code v-if="run.data.value.action_name && run.data.value.action_name !== run.data.value.action" class="faint">{{ run.data.value.action }}</code>
+            </dd>
           </div>
           <div v-if="run.data.value.retry_of">
             <dt>Retry of</dt>

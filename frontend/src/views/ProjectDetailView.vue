@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { notifiersApi, projectsApi, runsApi } from '../api'
 import { ApiError } from '../api/client'
 import { isActive, type RunSummary } from '../api/types'
+import ActionsPanel from '../components/projects/ActionsPanel.vue'
 import WebhookPanel from '../components/projects/WebhookPanel.vue'
 import RunsTable from '../components/runs/RunsTable.vue'
 import AppIcon from '../components/ui/AppIcon.vue'
@@ -137,13 +138,14 @@ async function remove() {
           </div>
           <InlineAlert v-if="runsError" class="inset">{{ runsError }}</InlineAlert>
           <RunsTable v-if="runs.length" :runs="runs" :show-project="false" />
-          <EmptyState v-else-if="runsLoaded" title="No runs yet" text="Press Deploy or call the webhook to start the first run." />
+          <EmptyState v-else-if="runsLoaded" title="No runs yet" text="Press Deploy, run an action or call the webhook to start the first run." />
           <div v-if="hasMore" class="more">
             <button type="button" class="btn btn-sm" @click="loadRuns(false)">Load older runs</button>
           </div>
         </section>
 
         <div class="side">
+          <ActionsPanel :project="project.data.value" />
           <WebhookPanel :project="project.data.value" @token-changed="project.reload()" />
 
           <section class="card danger" aria-labelledby="danger-title">

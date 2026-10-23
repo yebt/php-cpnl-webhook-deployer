@@ -4,6 +4,7 @@ import type { RunSummary } from '../../api/types'
 import { useNow } from '../../composables/useNow'
 import { elapsedSince, formatDuration, fullDateTime, timeAgo } from '../../lib/format'
 import StatusBadge from '../ui/StatusBadge.vue'
+import ActionBadge from './ActionBadge.vue'
 import { triggerSummary } from './trigger'
 
 withDefaults(defineProps<{ runs: RunSummary[]; showProject?: boolean }>(), { showProject: true })
@@ -33,7 +34,10 @@ function duration(run: RunSummary): string {
       <tbody>
         <tr v-for="run in runs" :key="run.id" class="clickable" @click="router.push(`/runs/${run.id}`)">
           <td>
-            <RouterLink :to="`/runs/${run.id}`" class="run-link mono" @click.stop>#{{ run.id }}</RouterLink>
+            <span class="run-cell">
+              <RouterLink :to="`/runs/${run.id}`" class="run-link mono" @click.stop>#{{ run.id }}</RouterLink>
+              <ActionBadge :run="run" />
+            </span>
           </td>
           <td><StatusBadge :status="run.status" /></td>
           <td v-if="showProject" class="project">{{ run.project.name ?? `Project ${run.project.id}` }}</td>
@@ -53,6 +57,7 @@ function duration(run: RunSummary): string {
 
 <style scoped>
 .table-wrap { overflow-x: auto; }
+.run-cell { display: inline-flex; align-items: center; gap: var(--space-2); }
 .run-link { color: var(--text); font-weight: 500; }
 .run-link:hover { color: var(--accent); }
 .project { font-weight: 500; }
