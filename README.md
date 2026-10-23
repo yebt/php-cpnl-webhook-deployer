@@ -20,6 +20,7 @@ Deployer is a self-hosted deploy runner for shared hosting. It ships as **one fi
 - [Requirements](#requirements)
 - [Configuration](#configuration)
 - [Pipeline YAML](#pipeline-yaml)
+- [Actions](#actions)
 - [Webhooks](#webhooks)
 - [Telegram notifications](#telegram-notifications)
 - [Updates](#updates)
@@ -281,6 +282,44 @@ Executed commands (the `▸` lines) are syntax-highlighted as bash: keywords, th
 | **Copy** (log header) | Copies exactly what the log shows — all steps, or only the focused step — as plain text, even while the run is live. Each line reads `HH:MM:SS  text`; stderr lines are marked `[stderr]` and commands start with `$ `. On plain HTTP, where the browser blocks the Clipboard API, a fallback copy is used. |
 | **Retry** (failed or cancelled runs) | Queues a new run of the same project and opens it. The new run has trigger `retry`, shows **Retry of #N**, and uses the project's **current** instructions file (like **Deploy**), so a pipeline you fixed after the failure is picked up. API: `POST /api/runs/{id}/retry` → `202 {"run_id": …}`; `409` if the run did not fail or was not cancelled. |
 
+## Actions
+
+Actions are named, on-demand tasks of a project, such as clearing or rebuilding a cache, defined in the same instructions file under `actions:`. Each key is the action id (lowercase letters, digits, `-` and `_`, up to 64 characters, starting with a letter or digit); `name` (defaults to the id) and `description` are optional, and `steps` uses exactly the same step fields as the deploy pipeline. Top-level `vars` and `env` apply to actions too. The deploy `steps` stay required.
+
+```yaml
+vars:
+  CACHE_DIR: ${PROJECT_DIR}/storage/cache
+steps:
+  - name: Deploy
+    run: git pull --ff-only
+actions:
+  clear-cache:
+    name: Clear cache
+    description: Empties the application cache.
+    steps:
+      - name: Clear
+        run: rm -rf ${CACHE_DIR}/*
+  rebuild-cache:
+    name: Rebuild cache
+    steps:
+      - name: Warm up
+        run:
+          - php artisan config:cache
+          - php artisan route:cache
+        timeout: 300
+```
+
+- **From the dashboard**: the project page has an **Actions** card with one **Run** button per action. After a confirmation the run is queued and its page opens. If the instructions file has errors, the card shows them instead.
+- **From a webhook**: `POST /hooks/<slug>/actions/<action-id>` with the project's webhook token (see [Webhooks](#webhooks)). The token is checked first (`401` otherwise); an unknown action gets `404 unknown_action` and an invalid instructions file `422 invalid_instructions`, both without creating a run.
+
+  ```bash
+  curl -fsS -X POST "https://deploy.example.com/hooks/shop/actions/clear-cache" -H "X-Deployer-Token: $DEPLOYER_TOKEN"
+  ```
+
+- **From the CLI**: `php index.php run:trigger shop --action=clear-cache`.
+
+An action run is an ordinary run of the project: it shares the project's queue (it starts after any queued or running deploy, never in parallel with one), streams its log, can be cancelled and retried (a retry runs the same action), and sends the usual notification, which names the action. Run lists and the run page show an action badge. The runner reads the **current** instructions file when the run starts; if the action was removed in the meantime, the run fails with a clear message. API: `GET /api/projects/{id}/actions`, `POST /api/projects/{id}/actions/{action}/runs` → `202 {"run_id": …, "action": …}`.
+
 ## Webhooks
 
 1. Open the project → **Webhook** → **Generate token**. Copy it immediately: it is shown once and only its hash is stored. **Regenerate** invalidates the old token at once.
@@ -302,6 +341,8 @@ GitHub Actions (store the token as the `DEPLOYER_TOKEN` secret):
       -H "Content-Type: application/json" \
       -d '{"ref": "${{ github.ref }}", "after": "${{ github.sha }}", "message": "${{ github.event.head_commit.message }}"}'
 ```
+
+To run an action instead of a deploy, append `/actions/<action-id>` to the URL (see [Actions](#actions)).
 
 The JSON body is optional. When present, `ref`/`branch`, `after`/`commit`, `message` and `author` (or the GitHub/GitLab/Gitea push payload fields) are shown on the run. A repository webhook from GitHub, GitLab or Gitea also works if it can send the custom header; note that every call deploys (there is no branch filter, so a GitHub `ping` deploys too).
 
@@ -371,7 +412,7 @@ Run `php index.php` in the docroot for the command list.
 |---------|---------|
 | `about` | version, resolved data dir, database and PHP CLI |
 | `migrate` | run database migrations (also automatic) |
-| `run:trigger <project>` | queue a run |
+| `run:trigger <project> [--action=<id>]` | queue a deploy run, or a run of the named action |
 | `run:cancel <run>` | cancel a run |
 | `runner:sweep` | recovery sweep (cron) |
 | `self-update` | install the latest release |
@@ -441,6 +482,11 @@ The version is stamped into the phar (`VERSION`, shown by `about` and the dashbo
 4. Installed copies pick it up from **Updates** or `self-update`.
 
 ## Changelog highlights
+
+### 0.5.0
+
+- **Actions**: named, on-demand instruction sets per project (`actions:` in the instructions file), run from the project page, `POST /hooks/<slug>/actions/<id>` or `run:trigger --action=<id>`. They share the deploy queue, log, cancel, retry and notifications; runs show an action badge.
+- Database migration 6 runs automatically (`runs.action`, `runs.action_name`).
 
 ### 0.4.0
 
