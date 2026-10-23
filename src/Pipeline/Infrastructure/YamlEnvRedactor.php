@@ -8,7 +8,7 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Hides `env` values (top level and per step) in a pipeline YAML before it is
+ * Hides `env` values (top level, per step and per action step) in a pipeline YAML before it is
  * exposed, e.g. as a run's pipeline snapshot. A document without env is
  * returned verbatim; one with env is re-dumped (comments and formatting are
  * lost) with every env value replaced by a placeholder.
@@ -31,10 +31,11 @@ final class YamlEnvRedactor
 
         $found = false;
         $data = $this->redactEnvOf($data, $found);
-        if (isset($data['steps']) && is_array($data['steps'])) {
-            foreach ($data['steps'] as $i => $step) {
-                if (is_array($step)) {
-                    $data['steps'][$i] = $this->redactEnvOf($step, $found);
+        $data = $this->redactStepsOf($data, $found);
+        if (isset($data['actions']) && is_array($data['actions'])) {
+            foreach ($data['actions'] as $id => $action) {
+                if (is_array($action)) {
+                    $data['actions'][$id] = $this->redactStepsOf($action, $found);
                 }
             }
         }
@@ -42,6 +43,24 @@ final class YamlEnvRedactor
         return $found
             ? self::NOTICE . Yaml::dump($data, 6, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK)
             : $yaml;
+    }
+
+    /**
+     * @param array<mixed> $node a document or an action, each with a `steps` list
+     *
+     * @return array<mixed>
+     */
+    private function redactStepsOf(array $node, bool &$found): array
+    {
+        if (isset($node['steps']) && is_array($node['steps'])) {
+            foreach ($node['steps'] as $i => $step) {
+                if (is_array($step)) {
+                    $node['steps'][$i] = $this->redactEnvOf($step, $found);
+                }
+            }
+        }
+
+        return $node;
     }
 
     /**

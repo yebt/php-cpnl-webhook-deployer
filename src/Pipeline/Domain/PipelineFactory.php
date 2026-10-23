@@ -19,7 +19,8 @@ namespace Deployer\Pipeline\Domain;
  */
 final class PipelineFactory
 {
-    private const TOP_LEVEL_KEYS = ['vars', 'env', 'steps'];
+    private const TOP_LEVEL_KEYS = ['vars', 'env', 'steps', 'actions'];
+    private const ACTION_KEYS = ['name', 'description', 'steps'];
     private const STEP_KEYS = ['name', 'run', 'timeout', 'continue_on_error', 'strict', 'env'];
     private const NAME_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/';
     private const PLACEHOLDER = '/\$?\$\{([A-Za-z_][A-Za-z0-9_]*)\}/';
@@ -41,13 +42,19 @@ final class PipelineFactory
         $vars = $this->resolveVars($data['vars'] ?? [], $builtins, $errors);
         $scope = $builtins->toArray() + $vars;
         $env = $this->resolveEnv($data['env'] ?? null, $scope, '', $errors);
-        $steps = $this->buildSteps($data, $scope, $env, $errors);
+        if (array_key_exists('steps', $data)) {
+            $steps = $this->buildSteps($data['steps'], '', $scope, $env, $errors);
+        } else {
+            $errors[] = '"steps" is required.';
+            $steps = [];
+        }
+        $actions = $this->buildActions($data['actions'] ?? null, $scope, $env, $errors);
 
         if ($errors !== []) {
             throw new PipelineValidationError($errors);
         }
 
-        return new Pipeline($steps, $vars, $env);
+        return new Pipeline($steps, $vars, $env, $actions);
     }
 
     /**
@@ -148,30 +155,95 @@ final class PipelineFactory
     }
 
     /**
-     * @param array<mixed>          $data
+     * `actions` is a mapping of id => {name?, description?, steps}. Action steps
+     * use the deploy step schema, with the same vars and global env.
+     *
+     * @param array<string, string> $scope
+     * @param array<string, string> $globalEnv
+     * @param list<string>          $errors
+     *
+     * @return array<string, Action>
+     */
+    private function buildActions(mixed $raw, array $scope, array $globalEnv, array &$errors): array
+    {
+        if ($raw === null || $raw === []) {
+            return [];
+        }
+        if (!is_array($raw) || array_is_list($raw)) {
+            $errors[] = '"actions" must be a mapping of id: action.';
+
+            return [];
+        }
+
+        $actions = [];
+        foreach ($raw as $id => $action) {
+            $id = (string) $id;
+            if (!preg_match(Action::ID_PATTERN, $id)) {
+                $errors[] = sprintf('actions: invalid id "%s"; use lowercase letters, digits, "-" and "_" (max 64), starting with a letter or digit.', $id);
+                continue;
+            }
+            $label = 'actions.' . $id;
+            if (!is_array($action) || ($action !== [] && array_is_list($action))) {
+                $errors[] = $label . ': must be a mapping with "steps".';
+                continue;
+            }
+
+            $before = count($errors);
+            foreach (array_keys($action) as $key) {
+                if (!in_array($key, self::ACTION_KEYS, true)) {
+                    $errors[] = sprintf('%s: unknown key "%s"; allowed keys: %s.', $label, $key, implode(', ', self::ACTION_KEYS));
+                }
+            }
+
+            $name = $action['name'] ?? $id;
+            if (!is_string($name) || trim($name) === '') {
+                $errors[] = $label . ': "name" must be a non-empty string.';
+            }
+
+            $description = $action['description'] ?? null;
+            if ($description !== null && !is_string($description)) {
+                $errors[] = $label . ': "description" must be a string.';
+            }
+
+            $steps = [];
+            if (array_key_exists('steps', $action)) {
+                $steps = $this->buildSteps($action['steps'], $label . '.', $scope, $globalEnv, $errors);
+            } else {
+                $errors[] = $label . ': "steps" is required.';
+            }
+
+            if ($steps !== [] && count($errors) === $before) {
+                /** @var string $name */
+                /** @var ?string $description */
+                $description = $description !== null && trim($description) !== '' ? trim($description) : null;
+                $actions[$id] = new Action($id, trim($name), $description, $steps);
+            }
+        }
+
+        return $actions;
+    }
+
+    /**
+     * @param string                $prefix label prefix: '' for the deploy, 'actions.<id>.' for an action
      * @param array<string, string> $scope
      * @param array<string, string> $globalEnv
      * @param list<string>          $errors
      *
      * @return list<Step>
      */
-    private function buildSteps(array $data, array $scope, array $globalEnv, array &$errors): array
+    private function buildSteps(mixed $raw, string $prefix, array $scope, array $globalEnv, array &$errors): array
     {
-        if (!array_key_exists('steps', $data)) {
-            $errors[] = '"steps" is required.';
-
-            return [];
-        }
-        $raw = $data['steps'];
         if (!is_array($raw) || $raw === [] || !array_is_list($raw)) {
-            $errors[] = '"steps" must be a non-empty list.';
+            $errors[] = $prefix === ''
+                ? '"steps" must be a non-empty list.'
+                : rtrim($prefix, '.') . ': "steps" must be a non-empty list.';
 
             return [];
         }
 
         $steps = [];
         foreach ($raw as $index => $step) {
-            $label = sprintf('steps[%d]', $index);
+            $label = sprintf('%ssteps[%d]', $prefix, $index);
             if (!is_array($step) || ($step !== [] && array_is_list($step))) {
                 $errors[] = $label . ': must be a mapping with "name" and "run".';
                 continue;
