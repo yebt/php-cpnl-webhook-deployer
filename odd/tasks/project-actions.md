@@ -25,7 +25,7 @@ Action parameters/inputs, per-action tokens, scheduled actions, running an actio
 
 ## Tasks
 - [x] T1 — Pipeline: parse/validate `actions` (domain model, errors, tests). Route: delegated. Commit 1fcab22.
-- [ ] T2 — Runs: migration 6 `runs.action`, enqueue/execute/retry an action, API (list + run), webhook route, CLI `--action`, presenter + notification text, tests. Route: delegated.
+- [x] T2 — Runs: migration 6 `runs.action`, enqueue/execute/retry an action, API (list + run), webhook route, CLI `--action`, presenter + notification text, tests. Route: delegated. Commit c5adf8e.
 - [ ] T3 — UI: Actions card, action labels in run lists/header, editor template/help, tests. Route: delegated.
 - [ ] T4 — README (actions section + webhook URL) + changelog 0.5.0; phar build + headless check. Route: delegated.
 
@@ -41,5 +41,16 @@ PHPUnit, vitest, vue-tsc, frontend build, phar build (0.5.0), headless browser: 
 - `YamlEnvRedactor` also hides `actions.<id>.steps[N].env` values.
 - RED: `tests/Pipeline/PipelineActionsTest.php` — 22 tests, 2 errors + 19 failures (`Undefined property Pipeline::$actions`). GREEN: `vendor/bin/phpunit` → OK (297 tests, 1001 assertions).
 
+### T2 — runs backend (commit c5adf8e)
+- Route: delegated (bounded writer).
+- Decision: migration 6 adds `runs.action TEXT NULL` **and** `runs.action_name TEXT NULL`. The display name is captured at enqueue time so run lists and notifications need not re-parse the (possibly changed) file per run; retry copies both from the source run. The presenter falls back to the id when the name is missing.
+- `ProjectActions` (Runs/Application) reads + parses the current file (RUN_ID 0, like the editor validation) for listing and enqueueing; `InstructionsUnavailable` (missing/unreadable/invalid file) → 422 `invalid_instructions`, `UnknownAction` → 404 `unknown_action`. The whole file must be valid (deploy `steps` included) to run an action.
+- `GET /api/projects/{id}/actions` → `{actions: [{id, name, description, steps: [step names]}], error}`. Decision: `steps` lists step names only (commands interpolated with RUN_ID 0 would be misleading); a missing file or invalid file returns 200 with `actions: []` and the error text.
+- `POST /api/projects/{id}/actions/{action}/runs` (session + CSRF via the /api guard) and `POST /hooks/{slug}/actions/{action}` (token verified first; same 401 for unknown project/bad token/any action) → 202 `{run_id, status, action}`; the webhook keeps the payload summary as `trigger_meta`.
+- Runner: start line reads `(trigger: manual, action: clear-cache)`; a removed action fails before any step with `Action "<id>" is not defined in the instructions file (it was removed or renamed after the run was queued).`
+- CLI: `run:trigger <project> [--action=<id>]`; unknown `--` options are rejected.
+- Notification: an `Action: <b>Name</b> (id)` line right below the headline (id omitted when equal to the name).
+- RED: `tests/Api/ActionsApiTest.php` (10 tests) + `RunFinishedMessageTest::testActionRunsNameTheAction` → 9 failures. GREEN: `vendor/bin/phpunit` → OK (308 tests, 1085 assertions).
+
 ## Next step
-T2.
+T3.
