@@ -23,6 +23,13 @@ final class RunFinishedMessage
             sprintf('%s <b>%s</b> · %s', self::emoji($run->status), self::e($project->name), self::e($run->status->value)),
             sprintf('Run #%d · trigger: %s · %s', $run->id, self::e($run->trigger), Duration::human(Duration::millis($run->startedAt, $run->finishedAt))),
         ];
+        if ($run->action !== null) {
+            $name = $run->actionName ?? $run->action;
+            // Right below the headline, so the action is visible in the notification preview.
+            array_splice($lines, 1, 0, $name === $run->action
+                ? sprintf('Action: <b>%s</b>', self::e($name))
+                : sprintf('Action: <b>%s</b> (%s)', self::e($name), self::e($run->action)));
+        }
         $meta = array_filter([
             isset($run->triggerMeta['branch']) ? 'branch ' . self::e($run->triggerMeta['branch']) : null,
             isset($run->triggerMeta['commit']) ? 'commit ' . self::e(substr($run->triggerMeta['commit'], 0, 8)) : null,

@@ -33,6 +33,7 @@ use Deployer\Projects\Infrastructure\SqliteProjectRepository;
 use Deployer\Runs\Application\CancelRun;
 use Deployer\Runs\Application\DrainProjectQueue;
 use Deployer\Runs\Application\EnqueueRun;
+use Deployer\Runs\Application\ProjectActions;
 use Deployer\Runs\Application\ExecuteRun;
 use Deployer\Runs\Application\Port\RunnerLauncher;
 use Deployer\Runs\Application\ReadRunLogs;
@@ -217,6 +218,11 @@ final class Application
         return new EnqueueRun($this->projects(), $this->runs(), $launcher ?? $this->runnerLauncher(), $this->clock);
     }
 
+    public function projectActions(?RunnerLauncher $launcher = null): ProjectActions
+    {
+        return new ProjectActions(new FilesystemInstructionsStore(), new YamlPipelineParser(), $this->enqueueRun($launcher));
+    }
+
     public function cancelRun(): CancelRun
     {
         return new CancelRun($this->runs(), $this->logs(), $this->clock);
@@ -305,8 +311,9 @@ final class Application
             $this->runs(),
         ))->register($router);
         $enqueue = $this->enqueueRun();
-        (new RunsController($this->projects(), $this->runs(), $enqueue, $this->cancelRun(), $this->readRunLogs(), new RetryRun($this->runs(), $enqueue)))->register($router);
-        (new WebhookController(new WebhookTokens($this->projects()), $this->enqueueRun()))->register($router);
+        $actions = new ProjectActions(new FilesystemInstructionsStore(), new YamlPipelineParser(), $enqueue);
+        (new RunsController($this->projects(), $this->runs(), $enqueue, $this->cancelRun(), $this->readRunLogs(), new RetryRun($this->runs(), $enqueue), $actions))->register($router);
+        (new WebhookController(new WebhookTokens($this->projects()), $enqueue, $actions))->register($router);
         (new UpdatesController(
             $this->checkForUpdate(...),
             $this->applyUpdate(...),

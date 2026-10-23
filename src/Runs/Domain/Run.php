@@ -22,6 +22,10 @@ final class Run
         public readonly ?array $triggerMeta = null,
         /** The failed/cancelled run this one retries, if any. */
         public readonly ?int $retryOf = null,
+        /** The action id this run executes; null for a deploy (the pipeline's `steps`). */
+        public readonly ?string $action = null,
+        /** The action's display name when the run was queued. */
+        public readonly ?string $actionName = null,
     ) {
     }
 }

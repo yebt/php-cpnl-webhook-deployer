@@ -24,6 +24,8 @@ final class RunPresenter
             'trigger' => $run->trigger,
             'trigger_meta' => $run->triggerMeta,
             'retry_of' => $run->retryOf,
+            'action' => $run->action,
+            'action_name' => $run->action === null ? null : ($run->actionName ?? $run->action),
             'cancel_requested' => $run->cancelRequested,
             'error' => $run->error,
             'created_at' => $run->createdAt,

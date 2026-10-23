@@ -51,6 +51,16 @@ final class RunFinishedMessageTest extends TestCase
         self::assertStringEndsWith('</pre>', $html);
     }
 
+    public function testActionRunsNameTheAction(): void
+    {
+        $run = new Run(7, 1, RunStatus::Success, 'manual', false, null, '2026-01-01 12:00:00.000', '2026-01-01 12:00:00.000', '2026-01-01 12:00:02.000', null, null, null, null, 'clear-cache', 'Clear <cache>');
+
+        $html = RunFinishedMessage::render($this->project('Shop'), $run, null, []);
+
+        self::assertStringContainsString("\nAction: <b>Clear &lt;cache&gt;</b> (clear-cache)\n", $html);
+        self::assertStringNotContainsString('Action:', RunFinishedMessage::render($this->project('Shop'), $this->makeRun(RunStatus::Success), null, []));
+    }
+
     private function project(string $name): Project
     {
         return new Project(1, 'shop', $name, '/srv/shop');

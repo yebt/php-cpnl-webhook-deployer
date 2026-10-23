@@ -70,7 +70,13 @@ final class ExecuteRun
     {
         $project = $this->projects->find($run->projectId)
             ?? throw new RuntimeException(sprintf('Project %d no longer exists.', $run->projectId));
-        $this->system($run->id, null, sprintf('Run #%d started for project "%s" (trigger: %s).', $run->id, $project->slug, $run->trigger));
+        $this->system($run->id, null, sprintf(
+            'Run #%d started for project "%s" (trigger: %s%s).',
+            $run->id,
+            $project->slug,
+            $run->trigger,
+            $run->action === null ? '' : ', action: ' . $run->action,
+        ));
 
         try {
             $yaml = $this->instructions->read($project);
@@ -89,15 +95,27 @@ final class ExecuteRun
             return [RunStatus::Failed, $e->getMessage()];
         }
 
+        $steps = $pipeline->steps;
+        if ($run->action !== null) {
+            $action = $pipeline->action($run->action);
+            if ($action === null) {
+                return $this->failBeforeSteps($run->id, sprintf(
+                    'Action "%s" is not defined in the instructions file (it was removed or renamed after the run was queued).',
+                    $run->action,
+                ));
+            }
+            $steps = $action->steps;
+        }
+
         if (!is_dir($project->folder)) {
             return $this->failBeforeSteps($run->id, sprintf('Project folder does not exist: %s', $project->folder));
         }
 
-        $this->runs->createSteps($run->id, $pipeline->steps);
-        $total = count($pipeline->steps);
+        $this->runs->createSteps($run->id, $steps);
+        $total = count($steps);
         $failure = null;
 
-        foreach ($pipeline->steps as $position => $step) {
+        foreach ($steps as $position => $step) {
             if ($this->runs->isCancelRequested($run->id)) {
                 return $this->cancel($run->id);
             }

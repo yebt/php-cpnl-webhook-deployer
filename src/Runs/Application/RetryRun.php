@@ -11,6 +11,7 @@ use Deployer\Runs\Domain\RunStatus;
  * Queues a new run of the same project for a run that failed or was cancelled.
  * Like a manual trigger, the new run reads the project's CURRENT instructions file
  * when it starts (not the failed run's snapshot), so a fixed pipeline is picked up.
+ * The action of an action run is kept.
  */
 final class RetryRun
 {
@@ -36,6 +37,8 @@ final class RetryRun
             throw new RunNotRetryable(sprintf('Only failed or cancelled runs can be retried; run #%d is %s.', $run->id, $run->status->value));
         }
 
-        return ($this->enqueue)($run->projectId, self::TRIGGER, retryOf: $run->id);
+        // An action run is retried as the same action; the runner fails it clearly
+        // if the action no longer exists in the current file.
+        return ($this->enqueue)($run->projectId, self::TRIGGER, retryOf: $run->id, action: $run->action, actionName: $run->actionName);
     }
 }

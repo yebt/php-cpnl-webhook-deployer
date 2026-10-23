@@ -109,6 +109,12 @@ final class Migrations
                 // A retried run points at the failed/cancelled run it repeats.
                 'ALTER TABLE runs ADD COLUMN retry_of INTEGER NULL REFERENCES runs(id) ON DELETE SET NULL',
             ],
+            6 => [
+                // An action run executes the named action's steps instead of the deploy
+                // steps (NULL = deploy). The display name is captured at enqueue time.
+                'ALTER TABLE runs ADD COLUMN action TEXT NULL',
+                'ALTER TABLE runs ADD COLUMN action_name TEXT NULL',
+            ],
         ];
     }
 }

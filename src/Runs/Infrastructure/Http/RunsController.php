@@ -9,9 +9,12 @@ use Deployer\Projects\Domain\Project;
 use Deployer\Projects\Domain\ProjectRepository;
 use Deployer\Runs\Application\CancelRun;
 use Deployer\Runs\Application\EnqueueRun;
+use Deployer\Runs\Application\InstructionsUnavailable;
+use Deployer\Runs\Application\ProjectActions;
 use Deployer\Runs\Application\ReadRunLogs;
 use Deployer\Runs\Application\RetryRun;
 use Deployer\Runs\Application\RunNotRetryable;
+use Deployer\Runs\Application\UnknownAction;
 use Deployer\Runs\Domain\Run;
 use Deployer\Runs\Domain\RunFilter;
 use Deployer\Runs\Domain\RunRepository;
@@ -31,6 +34,7 @@ final class RunsController
         private readonly CancelRun $cancel,
         private readonly ReadRunLogs $logs,
         private readonly RetryRun $retry,
+        private readonly ProjectActions $actions,
     ) {
     }
 
@@ -42,6 +46,21 @@ final class RunsController
                 $runId = ($this->enqueue)($project->id, 'manual');
 
                 return Response::json(['run_id' => $runId, 'status' => RunStatus::Queued->value], 202);
+            })
+            ->add('GET', '/api/projects/{id}/actions', function (Request $r, array $p): Response {
+                $project = $this->projects->find(RouteParams::id($p)) ?? throw ApiError::notFound('Project not found.');
+                try {
+                    $actions = $this->actions->list($project);
+                } catch (InstructionsUnavailable $e) {
+                    return Response::json(['actions' => [], 'error' => $e->getMessage()]);
+                }
+
+                return Response::json(['actions' => array_values(array_map(ActionPresenter::action(...), $actions)), 'error' => null]);
+            })
+            ->add('POST', '/api/projects/{id}/actions/{action}/runs', function (Request $r, array $p): Response {
+                $project = $this->projects->find(RouteParams::id($p)) ?? throw ApiError::notFound('Project not found.');
+
+                return ActionPresenter::queued($this->actions, $project, $p['action'], 'manual');
             })
             ->add('GET', '/api/runs', $this->list(...))
             ->add('GET', '/api/runs/{id}', function (Request $r, array $p): Response {
